@@ -615,6 +615,11 @@ const LANGUAGES = {
        challenges:[
          {type:"mcq",q:"What type is: name = \"Ohbot\"",opts:["Integer","String","Boolean","Float"],ans:1,hint:"Look at the quote marks...",ok:"✅ Text in quotes is a String!",bad:"❌ Text in quotes = String."},
          {type:"fill",q:"Store your name in a variable:",pre:"your_name = ",suf:"",ans:['"Iaroslav"',"'Iaroslav'",'"iaroslav"',"'iaroslav'"],hint:"Text needs quote marks!",ok:"✅ Text values need quotes!",bad:"❌ Wrap text in quotes."}
+       ,
+         {type:"mcq",q:"Which is a VALID variable name?",opts:["2cool","my-var","my_var","class"],ans:2,hint:"No digits first, no dashes, no keywords...",ok:"✅ my_var — underscores are allowed!",bad:"❌ Only my_var works: no leading digits, dashes, or reserved words."},
+         {type:"mcq",q:"What does type(5) return?",opts:["<class 'int'>","<class 'str'>","<class 'float'>","number"],ans:0,hint:"5 is a whole number...",ok:"✅ 5 is an int!",bad:"❌ Whole numbers are int."},
+         {type:"fill",q:"Turn the text \"5\" into a number:",pre:"num = ",suf:"(\"5\")",ans:["int"],hint:"The whole-number type...",ok:"✅ int() converts text to a whole number!",bad:"❌ Use int()."},
+         {type:"fill",q:"Assign the value 3.14 to pi:",pre:"pi ",suf:" 3.14",ans:["="],hint:"The assignment operator...",ok:"✅ = assigns values!",bad:"❌ Use =."}
        ]},
       {id:1,icon:"💬",title:"Print & Input",desc:"Talk to your program",
        content:`<p><strong>print()</strong> shows output. <strong>input()</strong> asks for input.</p>
@@ -624,6 +629,11 @@ const LANGUAGES = {
        challenges:[
          {type:"mcq",q:"What prints?\n\nname = \"Ohbot\"\nprint(\"Hello \" + name)",opts:["Hello name","Hello Ohbot","name","Error"],ans:1,hint:"Python replaces the variable with its value...",ok:"✅ Python swaps the variable for its value!",bad:"❌ Python prints the value: Hello Ohbot"},
          {type:"fill",q:"Fix this so it does not crash:\n\nage = 12\nprint(\"Age: \" + ",suf:")",ans:["str(age)"],hint:"You need to convert age to text first...",ok:"✅ str() converts numbers to text!",bad:"❌ Use str(age) to convert the number."}
+       ,
+         {type:"mcq",q:"input() ALWAYS returns which type?",opts:["int","str","bool","float"],ans:1,hint:"Even if the user types 42...",ok:"✅ input() always gives a string!",bad:"❌ input() returns str — convert with int() if needed."},
+         {type:"mcq",q:"What does print(\"a\", \"b\") output?",opts:["ab","a b","a,b","Error"],ans:1,hint:"print adds a separator...",ok:"✅ print separates arguments with a space!",bad:"❌ Comma-separated arguments print with spaces: a b"},
+         {type:"fill",q:"Ask the user for their name:",pre:"name = ",suf:"(\"Your name? \")",ans:["input"],hint:"The function that reads typing...",ok:"✅ input() reads what the user types!",bad:"❌ Use input()."},
+         {type:"fill",q:"Insert the variable into the f-string:",pre:"print(f\"Hi {",suf:"}!\")",ans:["name"],hint:"The variable holding the name...",ok:"✅ {name} drops the variable into the text!",bad:"❌ Put name inside the braces."}
        ]},
       {id:2,icon:"🔀",title:"If Statements",desc:"Make decisions",
        content:`<p>Use <strong>if</strong>, <strong>elif</strong>, <strong>else</strong> to make decisions. Use <strong>==</strong> to compare.</p>
@@ -636,6 +646,11 @@ const LANGUAGES = {
        challenges:[
          {type:"mcq",q:"Someone types Bob. What prints?\n\nif name==\"Iaroslav\":\n    print(\"Hi!\")\nelse:\n    print(\"Stranger!\")",opts:["Hi!","Stranger!","Bob","Nothing"],ans:1,hint:"Bob does not match Iaroslav...",ok:"✅ Bob hits the else: Stranger!",bad:"❌ Bob does not match so else runs."},
          {type:"fill",q:"Complete the comparison:",pre:"if score ",suf:" 100:\n    print(\"Perfect!\")",ans:["=="],hint:"Double equals compares values...",ok:"✅ == compares two values!",bad:"❌ Use == to compare."}
+       ,
+         {type:"mcq",q:"Which operator means NOT equal?",opts:["=!","!=","<>","=/="],ans:1,hint:"Exclamation then equals...",ok:"✅ != means not equal!",bad:"❌ Python uses !=."},
+         {type:"mcq",q:"What happens with: if 0: print(\"hi\")",opts:["Prints hi","Skipped — 0 is falsy","Error","Prints 0"],ans:1,hint:"Is 0 truthy?",ok:"✅ 0 counts as False, so the block is skipped!",bad:"❌ 0 is falsy — the block never runs."},
+         {type:"fill",q:"Add the else-if branch:",pre:"",suf:" score >= 70:\n    print(\"B\")",ans:["elif"],hint:"Python squishes else+if...",ok:"✅ elif!",bad:"❌ Use elif."},
+         {type:"fill",q:"Check if x EQUALS 10:",pre:"if x ",suf:" 10:",ans:["=="],hint:"Double it for comparison...",ok:"✅ == compares, = assigns!",bad:"❌ Use ==."}
        ]},
       {id:3,icon:"🔁",title:"For Loops",desc:"Repeat code",
        content:`<p><strong>for</strong> loops repeat code. <strong>range()</strong> sets how many times.</p>
@@ -646,6 +661,11 @@ const LANGUAGES = {
        challenges:[
          {type:"mcq",q:"How many times does this print?\n\nfor i in range(4):\n    print(\"Hi\")",opts:["3","4","5","0"],ans:1,hint:"range(4) counts 0,1,2,3...",ok:"✅ range(4) = 4 steps!",bad:"❌ range(4) runs 4 times."},
          {type:"fill",q:"Make Ohbot wave 3 times:",pre:"for i in ",suf:":\n    print(\"Wave!\")",ans:["range(3)"],hint:"What function repeats a set number of times?",ok:"✅ range(3) loops 3 times!",bad:"❌ Use range(3)."}
+       ,
+         {type:"mcq",q:"What numbers does range(3) produce?",opts:["1, 2, 3","0, 1, 2","0, 1, 2, 3","just 3"],ans:1,hint:"Starts at 0, stops BEFORE...",ok:"✅ range(3) → 0, 1, 2!",bad:"❌ range starts at 0 and excludes the end."},
+         {type:"mcq",q:"What does range(2, 10, 3) produce?",opts:["2, 5, 8","2, 4, 6, 8","3, 6, 9","2, 10, 3"],ans:0,hint:"Start 2, step 3, stop before 10...",ok:"✅ 2, 5, 8 — stepping by 3!",bad:"❌ Start at 2, add 3 each time, stop before 10: 2, 5, 8."},
+         {type:"fill",q:"Loop over the list:",pre:"for fruit ",suf:" fruits:",ans:["in"],hint:"The membership keyword...",ok:"✅ for item in list!",bad:"❌ Use in."},
+         {type:"fill",q:"Repeat exactly 5 times:",pre:"for i in ",suf:"(5):",ans:["range"],hint:"The counting function...",ok:"✅ range(5) counts 0-4!",bad:"❌ Use range()."}
        ]},
       {id:4,icon:"🛠️",title:"Functions",desc:"Reusable code blocks",
        content:`<p>Use <strong>def</strong> to define a function you can reuse.</p>
@@ -657,6 +677,11 @@ const LANGUAGES = {
        challenges:[
          {type:"mcq",q:"What keyword defines a function?",opts:["function","define","def","fun"],ans:2,hint:"Short for define...",ok:"✅ def defines functions!",bad:"❌ Python uses def."},
          {type:"fill",q:"Define a function called nod:",pre:"",suf:" nod():\n    print(\"Nods!\")",ans:["def"],hint:"What keyword starts a function?",ok:"✅ def starts every function!",bad:"❌ Use def."}
+       ,
+         {type:"mcq",q:"Calling greet() BEFORE its def line causes?",opts:["It works","NameError","Returns None","Prints nothing"],ans:1,hint:"Python reads top to bottom...",ok:"✅ NameError — define before you call!",bad:"❌ The function does not exist yet: NameError."},
+         {type:"mcq",q:"In greet(\"Ada\"), the text \"Ada\" is called…",opts:["a parameter","an argument","a variable","a return"],ans:1,hint:"Parameters are in the def; you pass…",ok:"✅ Values you pass in are arguments!",bad:"❌ Passed values = arguments; names in def = parameters."},
+         {type:"fill",q:"Add the second parameter:",pre:"def add(a, ",suf:"):\n    return a + b",ans:["b"],hint:"Look at what the body uses...",ok:"✅ The body needs b!",bad:"❌ Add b."},
+         {type:"fill",q:"Call the function:",pre:"def square(n):\n    return n * n\n\nx = ",suf:"(4)",ans:["square"],hint:"Use its name...",ok:"✅ square(4) → 16!",bad:"❌ Call square()."}
        ]},
       {id:5,icon:"📋",title:"Lists",desc:"Store multiple values",
        content:`<p>Lists store multiple values in square brackets.</p>
@@ -667,6 +692,11 @@ names.<span class="fn">append</span>(<span class="str">"Ohbot"</span>)
        challenges:[
          {type:"mcq",q:"What prints?\n\nfruits = [\"apple\",\"banana\",\"cherry\"]\nprint(fruits[2])",opts:["apple","banana","cherry","Error"],ans:2,hint:"Lists start at index 0...",ok:"✅ Index 2 = third item = cherry!",bad:"❌ Index 0=apple, 1=banana, 2=cherry."},
          {type:"fill",q:"Add an item to a list:",pre:"my_list = [1,2,3]\nmy_list.",suf:"(4)",ans:["append"],hint:"What method adds to the end of a list?",ok:"✅ append() adds to the end!",bad:"❌ Use .append()."}
+       ,
+         {type:"mcq",q:"nums = [1, 2, 3] — what is nums[0]?",opts:["1","0","2","Error"],ans:0,hint:"Counting starts at 0...",ok:"✅ Index 0 is the FIRST item: 1!",bad:"❌ nums[0] is the first element: 1."},
+         {type:"mcq",q:"len([1, 2, 3]) returns?",opts:["2","3","4","[3]"],ans:1,hint:"Count the items...",ok:"✅ Three items → 3!",bad:"❌ len counts elements: 3."},
+         {type:"fill",q:"Add 4 to the end of the list:",pre:"nums.",suf:"(4)",ans:["append"],hint:"The add-to-end method...",ok:"✅ append() adds to the end!",bad:"❌ Use append()."},
+         {type:"fill",q:"Get the LAST item:",pre:"last = nums[",suf:"]",ans:["-1"],hint:"Negative indexes count from the end...",ok:"✅ [-1] is the last item!",bad:"❌ Use -1."}
        ]},
       {id:6,icon:"🔄",title:"While Loops",desc:"Loop until condition changes",
        content:`<p><strong>while</strong> repeats as long as a condition is True.</p>
@@ -678,6 +708,11 @@ names.<span class="fn">append</span>(<span class="str">"Ohbot"</span>)
        challenges:[
          {type:"mcq",q:"How many times does this print Beep?\n\ncount = 0\nwhile count < 3:\n    print(\"Beep\")\n    count += 1",opts:["2","3","4","Forever"],ans:1,hint:"count goes 0,1,2 then stops...",ok:"✅ Prints 3 times!",bad:"❌ count goes 0,1,2 — stops at 3. That is 3 times."},
          {type:"fill",q:"Complete the while loop condition:",pre:"count = 0\nwhile count ",suf:" 5:\n    count += 1",ans:["< 5","<5"],hint:"Keep going while count is less than...",ok:"✅ count < 5 stops at the right time!",bad:"❌ Use < 5."}
+       ,
+         {type:"mcq",q:"while True: with no break inside…",opts:["Runs once","Loops forever","Error","Is skipped"],ans:1,hint:"When does True become False?",ok:"✅ Infinite loop — needs a break!",bad:"❌ True never changes: infinite loop."},
+         {type:"mcq",q:"What does break do?",opts:["Skips one iteration","Exits the loop completely","Restarts the loop","Crashes"],ans:1,hint:"Break OUT...",ok:"✅ break exits the loop immediately!",bad:"❌ break leaves the loop; continue skips one round."},
+         {type:"fill",q:"Skip to the next iteration:",pre:"if x == 5:\n    ",suf:"",ans:["continue"],hint:"Not break — the other one...",ok:"✅ continue jumps to the next round!",bad:"❌ Use continue."},
+         {type:"fill",q:"Loop while x is LESS THAN 10:",pre:"while x ",suf:" 10:",ans:["<"],hint:"Less than...",ok:"✅ x < 10!",bad:"❌ Use <."}
        ]},
       {id:7,icon:"🔢",title:"Dictionaries",desc:"Key-value data",
        content:`<p>Dictionaries store key-value pairs.</p>
@@ -687,6 +722,11 @@ player[<span class="str">"score"</span>] = <span class="num">200</span>  <span c
        challenges:[
          {type:"mcq",q:"How do you access a dictionary value?",opts:["dict(key)","dict[key]","dict.key()","dict->key"],ans:1,hint:"Use square brackets with the key...",ok:"✅ dict[key] accesses the value!",bad:"❌ Use dict['key'] with square brackets."},
          {type:"fill",q:"Access the score key:",pre:"stats = {'score': 99}\nprint(stats[",suf:"])",ans:["'score'",'"score"'],hint:"Put the key name in quotes...",ok:"✅ stats['score'] looks up by key!",bad:"❌ Use the key in quotes: stats['score']"}
+       ,
+         {type:"mcq",q:"Which method returns ALL keys of dict d?",opts:["d.keys()","d.values()","d.items()","d.get()"],ans:0,hint:"Keys, literally...",ok:"✅ d.keys()!",bad:"❌ d.keys() lists the keys."},
+         {type:"mcq",q:"d.get(\"missing\") when the key does not exist returns?",opts:["An error","None","0","Empty string"],ans:1,hint:"get() is the safe way...",ok:"✅ get() returns None instead of crashing!",bad:"❌ Unlike d[\"missing\"], get() quietly returns None."},
+         {type:"fill",q:"Read the value stored under \"age\":",pre:"d = {\"age\": 12}\nprint(d[",suf:"])",ans:["\"age\"","'age'"],hint:"The key, in quotes...",ok:"✅ d[\"age\"] → 12!",bad:"❌ Use the key in quotes."},
+         {type:"fill",q:"Loop over key-value pairs:",pre:"for k, v in d.",suf:"():",ans:["items"],hint:"Pairs = items...",ok:"✅ .items() gives (key, value) pairs!",bad:"❌ Use .items()."}
        ]},
       {id:8,icon:"📤",title:"Return Values",desc:"Functions that give back data",
        content:`<p>Functions can <strong>return</strong> a value for use elsewhere.</p>
@@ -698,6 +738,11 @@ result = <span class="fn">add</span>(<span class="num">3</span>, <span class="nu
        challenges:[
          {type:"mcq",q:"What does this print?\n\ndef double(n):\n    return n * 2\n\nprint(double(5))",opts:["5","double","10","Error"],ans:2,hint:"double(5) returns 5*2...",ok:"✅ double(5) returns 10!",bad:"❌ 5*2 = 10."},
          {type:"fill",q:"Complete the return statement:",pre:"def square(n):\n    ",suf:" n * n",ans:["return"],hint:"What keyword sends a value back?",ok:"✅ return sends the value back!",bad:"❌ Use return."}
+       ,
+         {type:"mcq",q:"A function with NO return statement returns…",opts:["0","None","An error","Empty string"],ans:1,hint:"Python has a special nothing-value...",ok:"✅ None!",bad:"❌ Functions return None by default."},
+         {type:"mcq",q:"Code written AFTER a return statement…",opts:["Runs normally","Never runs","Runs once","Runs at the end"],ans:1,hint:"return exits immediately...",ok:"✅ return ends the function on the spot!",bad:"❌ Anything after return is unreachable."},
+         {type:"fill",q:"Send the result back:",pre:"def double(n):\n    ",suf:" n * 2",ans:["return"],hint:"The give-back keyword...",ok:"✅ return sends the value out!",bad:"❌ Use return."},
+         {type:"fill",q:"Store the returned value:",pre:"result ",suf:" double(5)",ans:["="],hint:"Capture it with assignment...",ok:"✅ result = double(5) stores 10!",bad:"❌ Use =."}
        ]},
       {id:9,icon:"⚠️",title:"Try & Except",desc:"Handle errors",
        content:`<p><strong>try/except</strong> catches errors so your program keeps running.</p>
@@ -708,6 +753,11 @@ result = <span class="fn">add</span>(<span class="num">3</span>, <span class="nu
        challenges:[
          {type:"mcq",q:"What runs if the try block fails?",opts:["try runs again","except runs","Program crashes","Nothing"],ans:1,hint:"That is the whole point of except...",ok:"✅ except catches errors!",bad:"❌ except runs when try fails."},
          {type:"fill",q:"Add the error catcher:",pre:"try:\n    x = int('abc')\n",suf:":\n    print('Error!')",ans:["except"],hint:"What keyword catches errors?",ok:"✅ except catches errors!",bad:"❌ Use except."}
+       ,
+         {type:"mcq",q:"int(\"abc\") raises which error?",opts:["TypeError","ValueError","KeyError","NameError"],ans:1,hint:"The VALUE cannot be converted...",ok:"✅ ValueError!",bad:"❌ Bad conversion values raise ValueError."},
+         {type:"mcq",q:"When does a finally block run?",opts:["Only on error","Only on success","Always","Never"],ans:2,hint:"Its name is a clue...",ok:"✅ finally ALWAYS runs!",bad:"❌ finally runs no matter what."},
+         {type:"fill",q:"Catch the conversion error:",pre:"try:\n    n = int(text)\n",suf:" ValueError:\n    print(\"Not a number!\")",ans:["except"],hint:"The catching keyword...",ok:"✅ except catches it!",bad:"❌ Use except."},
+         {type:"fill",q:"Throw your own error:",pre:"",suf:" ValueError(\"age cannot be negative\")",ans:["raise"],hint:"Lift the error up...",ok:"✅ raise throws the exception!",bad:"❌ Use raise."}
        ]},
       {id:10,icon:"🏗️",title:"Classes",desc:"Build your own types",
        content:`<p>A <strong>class</strong> is a blueprint for objects with data and methods.</p>
@@ -722,6 +772,11 @@ ohbot.<span class="fn">speak</span>()</div>`,
        challenges:[
          {type:"mcq",q:"What is __init__ used for?",opts:["Deleting","Printing","Runs on object creation","Importing"],ans:2,hint:"It runs automatically when you create a new object...",ok:"✅ __init__ runs at creation!",bad:"❌ __init__ is the constructor."},
          {type:"fill",q:"Create a Robot instance:",pre:"my_bot = ",suf:"('Ohbot')",ans:["Robot"],hint:"Use the class name like a function...",ok:"✅ Robot('Ohbot') creates an object!",bad:"❌ Use the class name: Robot('Ohbot')"}
+       ,
+         {type:"mcq",q:"Inside a class method, self refers to…",opts:["The class itself","The current object (instance)","The parent class","A global"],ans:1,hint:"Each dog is its own dog...",ok:"✅ self = this particular instance!",bad:"❌ self is the instance the method was called on."},
+         {type:"mcq",q:"The constructor method is named…",opts:["__init__","init","__new__","constructor"],ans:0,hint:"Double underscores...",ok:"✅ __init__ runs when the object is created!",bad:"❌ Python constructors are __init__."},
+         {type:"fill",q:"Create an instance of Dog:",pre:"rex = ",suf:"(\"Rex\")",ans:["Dog"],hint:"Call the class like a function...",ok:"✅ Dog(\"Rex\") builds a new Dog!",bad:"❌ Use the class name: Dog(...)."},
+         {type:"fill",q:"Store the name on the instance:",pre:"def __init__(self, name):\n        self.",suf:" = name",ans:["name"],hint:"Attribute matching the parameter...",ok:"✅ self.name saves it on the object!",bad:"❌ Use self.name."}
        ]},
       {id:11,icon:"📂",title:"File Reading",desc:"Read and write files",
        content:`<p>Python can read and write files with <strong>open()</strong>.</p>
@@ -734,6 +789,11 @@ ohbot.<span class="fn">speak</span>()</div>`,
        challenges:[
          {type:"mcq",q:"What mode opens a file for writing?",opts:['"r"','"w"','"x"','"write"'],ans:1,hint:"Write starts with w...",ok:'✅ "w" opens for writing!',bad:'❌ Use "w" for write mode.'},
          {type:"fill",q:"Open a file for reading:",pre:"with open('data.txt', ",suf:") as f:\n    print(f.read())",ans:['"r"',"'r'"],hint:"Read mode is one letter...",ok:'✅ "r" opens for reading!',bad:'❌ Use "r" for read mode.'}
+       ,
+         {type:"mcq",q:"The \"r\" in open(\"f.txt\", \"r\") means…",opts:["Read","Write","Rename","Run"],ans:0,hint:"You are not changing the file...",ok:"✅ r = read mode!",bad:"❌ r opens for reading."},
+         {type:"mcq",q:"Why use with open(...) as f?",opts:["It is faster","The file closes automatically","It is required","It reads twice"],ans:1,hint:"No forgotten open files...",ok:"✅ with auto-closes the file, even on errors!",bad:"❌ The with-block closes the file for you."},
+         {type:"fill",q:"Open the file safely:",pre:"with ",suf:"(\"data.txt\") as f:",ans:["open"],hint:"The built-in for files...",ok:"✅ open()!",bad:"❌ Use open()."},
+         {type:"fill",q:"Read the whole file into text:",pre:"text = f.",suf:"()",ans:["read"],hint:"Just read it...",ok:"✅ f.read() returns everything!",bad:"❌ Use .read()."}
        ]},
       {id:12,icon:"🎲",title:"Random Module",desc:"Generate random values",
        content:`<p>The <strong>random</strong> module generates random numbers and picks random items.</p>
@@ -745,6 +805,11 @@ items = [<span class="str">"a"</span>, <span class="str">"b"</span>, <span class
        challenges:[
          {type:"mcq",q:"What does random.randint(1, 6) do?",opts:["Always returns 6","Returns a float","Returns a random int from 1 to 6","Returns a list"],ans:2,hint:"Think of a dice...",ok:"✅ Like rolling a dice — random number 1 to 6!",bad:"❌ randint gives a random integer in the range."},
          {type:"fill",q:"Pick a random item from a list:",pre:"import random\nnames = ['A','B','C']\nprint(random.",suf:"(names))",ans:["choice"],hint:"What function chooses randomly from a list?",ok:"✅ random.choice() picks randomly!",bad:"❌ Use random.choice()."}
+       ,
+         {type:"mcq",q:"random.randint(1, 3) can return…",opts:["0","3","4","3.5"],ans:1,hint:"randint includes BOTH ends...",ok:"✅ randint includes the end: 1, 2 or 3!",bad:"❌ randint(1,3) gives 1, 2 or 3 — ends included."},
+         {type:"mcq",q:"random.choice() needs what as input?",opts:["A number","A sequence like a list","Two numbers","Nothing"],ans:1,hint:"It picks FROM something...",ok:"✅ choice picks a random element from a sequence!",bad:"❌ Give it a list/string to pick from."},
+         {type:"fill",q:"Load the random module:",pre:"",suf:" random",ans:["import"],hint:"Bring it in...",ok:"✅ import random!",bad:"❌ Use import."},
+         {type:"fill",q:"Mix up the deck:",pre:"random.",suf:"(cards)",ans:["shuffle"],hint:"Like shuffling cards...",ok:"✅ shuffle() randomizes the list in place!",bad:"❌ Use shuffle()."}
        ]},
       {id:13,icon:"🔗",title:"String Methods",desc:"Manipulate text",
        content:`<p>Strings have built-in methods for manipulation.</p>
@@ -755,6 +820,11 @@ items = [<span class="str">"a"</span>, <span class="str">"b"</span>, <span class
        challenges:[
          {type:"mcq",q:"What does \"hello\".upper() return?",opts:["hello","Hello","HELLO","upper"],ans:2,hint:"Upper makes all letters capital...",ok:"✅ .upper() capitalises everything!",bad:"❌ .upper() returns all capitals: HELLO."},
          {type:"fill",q:"Convert text to uppercase:",pre:"text = 'coding'\nprint(text.",suf:"())",ans:["upper"],hint:"What method makes text uppercase?",ok:"✅ .upper() works!",bad:"❌ Use .upper()."}
+       ,
+         {type:"mcq",q:"\" hi \".strip() returns…",opts:["\" hi \"","\"hi\"","\"hi \"","Error"],ans:1,hint:"strip removes edge spaces...",ok:"✅ strip() trims both ends!",bad:"❌ strip removes whitespace from both sides."},
+         {type:"mcq",q:"How many items in \"a,b,c\".split(\",\")?",opts:["1","2","3","4"],ans:2,hint:"Count the pieces between commas...",ok:"✅ [\"a\",\"b\",\"c\"] — three!",bad:"❌ Splitting on commas gives 3 pieces."},
+         {type:"fill",q:"SHOUT the name:",pre:"loud = name.",suf:"()",ans:["upper"],hint:"Uppercase it...",ok:"✅ .upper()!",bad:"❌ Use .upper()."},
+         {type:"fill",q:"Swap every \"a\" for \"o\":",pre:"s.",suf:"(\"a\", \"o\")",ans:["replace"],hint:"Find and...",ok:"✅ .replace(old, new)!",bad:"❌ Use .replace()."}
        ]},
       {id:14,icon:"📐",title:"List Comprehensions",desc:"Build lists in one line",
        content:`<p>List comprehensions build lists in a single elegant line.</p>
@@ -766,6 +836,11 @@ evens = [x <span class="kw">for</span> x <span class="kw">in</span> nums <span c
        challenges:[
          {type:"mcq",q:"What does [x*2 for x in [1,2,3]] produce?",opts:["[1,2,3]","[2,4,6]","[1,4,9]","Error"],ans:1,hint:"Each element x is multiplied by 2...",ok:"✅ [2,4,6] — each element doubled!",bad:"❌ x*2 doubles each item: [2,4,6]."},
          {type:"fill",q:"Complete this list comprehension to square numbers:",pre:"nums = [1,2,3]\nsquares = [x**2 ",suf:" x in nums]",ans:["for"],hint:"List comprehensions use a for keyword...",ok:"✅ for loops over each item!",bad:"❌ Use for: [x**2 for x in nums]"}
+       ,
+         {type:"mcq",q:"[x*2 for x in [1,2,3]] gives…",opts:["[2, 4, 6]","[1, 2, 3, 1, 2, 3]","[3, 6]","Error"],ans:0,hint:"Double each element...",ok:"✅ Each x is doubled: [2,4,6]!",bad:"❌ The expression runs per element: [2,4,6]."},
+         {type:"mcq",q:"[x for x in range(5) if x % 2 == 0] gives…",opts:["[1, 3]","[0, 2, 4]","[2, 4]","[0,1,2,3,4]"],ans:1,hint:"Keep the evens from 0-4...",ok:"✅ Evens in 0-4: [0,2,4]!",bad:"❌ The if keeps only even numbers: [0,2,4]."},
+         {type:"fill",q:"Complete the comprehension:",pre:"squares = [n * n ",suf:" n in nums]",ans:["for"],hint:"The loop word...",ok:"✅ [expr for item in list]!",bad:"❌ Use for."},
+         {type:"fill",q:"Keep only even numbers:",pre:"evens = [x for x in nums ",suf:" x % 2 == 0]",ans:["if"],hint:"The filter word...",ok:"✅ The if clause filters!",bad:"❌ Use if."}
        ]},
       {id:15,icon:"📦",title:"Modules & Import",desc:"Use external code",
        content:`<p><strong>import</strong> loads modules with extra functionality.</p>
@@ -778,6 +853,11 @@ evens = [x <span class="kw">for</span> x <span class="kw">in</span> nums <span c
        challenges:[
          {type:"mcq",q:"What does 'from math import sqrt' let you do?",opts:["Import everything","Use sqrt without math. prefix","Delete the math module","Only use sqrt once"],ans:1,hint:"from...import brings in just one thing directly...",ok:"✅ You can call sqrt() directly without math.!",bad:"❌ from X import Y lets you use Y without the prefix."},
          {type:"fill",q:"Import the math module:",pre:"",suf:" math\nprint(math.pi)",ans:["import"],hint:"What keyword loads a module?",ok:"✅ import loads the module!",bad:"❌ Use import."}
+       ,
+         {type:"mcq",q:"After import math, you use pi as…",opts:["pi","math.pi","math->pi","Math.PI"],ans:1,hint:"Module dot name...",ok:"✅ math.pi!",bad:"❌ Prefix with the module: math.pi."},
+         {type:"mcq",q:"After from math import sqrt, you call…",opts:["math.sqrt(9)","sqrt(9)","Math.sqrt(9)","sqrt.math(9)"],ans:1,hint:"You imported the name directly...",ok:"✅ sqrt(9) — no prefix needed!",bad:"❌ from-imports skip the module prefix: sqrt(9)."},
+         {type:"fill",q:"Give numpy a nickname:",pre:"import numpy ",suf:" np",ans:["as"],hint:"Alias keyword...",ok:"✅ import ... as np!",bad:"❌ Use as."},
+         {type:"fill",q:"Grab just choice from random:",pre:"from random ",suf:" choice",ans:["import"],hint:"from module ??? name...",ok:"✅ from random import choice!",bad:"❌ Use import."}
        ]},
       {id:16,icon:"🎯",title:"Default Parameters",desc:"Functions with defaults",
        content:`<p>Functions can have <strong>default</strong> parameter values used when none are given.</p>
@@ -789,6 +869,11 @@ evens = [x <span class="kw">for</span> x <span class="kw">in</span> nums <span c
        challenges:[
          {type:"mcq",q:"What prints?\n\ndef say(msg, times=1):\n    print(msg * times)\n\nsay(\"Hi\")",opts:["Hi Hi","Hi","1","Error"],ans:1,hint:"times defaults to 1 if not provided...",ok:"✅ say('Hi') uses default times=1: Hi!",bad:"❌ times defaults to 1 so msg*1 = Hi."},
          {type:"fill",q:"Set a default value of 0 for score:",pre:"def player(name, score=",suf:"):\n    print(name, score)",ans:["0"],hint:"Put the default after the equals sign...",ok:"✅ score defaults to 0!",bad:"❌ Use 0: def player(name, score=0)"}
+       ,
+         {type:"mcq",q:"def f(a, b=2) — calling f(5) makes b…",opts:["An error","2","5","None"],ans:1,hint:"The default kicks in...",ok:"✅ b falls back to its default 2!",bad:"❌ Missing arguments use their defaults."},
+         {type:"mcq",q:"Default parameters must come…",opts:["First","After required ones","Anywhere","Alone"],ans:1,hint:"def f(required, optional=1)...",ok:"✅ Defaults go after required parameters!",bad:"❌ Required first, defaults after."},
+         {type:"fill",q:"Give name a default:",pre:"def greet(name",suf:"\"Guest\"):",ans:["="],hint:"Attach the default with...",ok:"✅ name=\"Guest\"!",bad:"❌ Use =."},
+         {type:"fill",q:"Call with a keyword argument:",pre:"def power(base, exp):\n    return base ** exp\n\npower(base=2, ",suf:"=8)",ans:["exp"],hint:"Name the second parameter...",ok:"✅ Keyword args name the parameter!",bad:"❌ Use exp=8."}
        ]},
       {id:17,icon:"🔑",title:"Lambda Functions",desc:"One-line functions",
        content:`<p><strong>lambda</strong> creates tiny one-line functions.</p>
@@ -800,6 +885,11 @@ add = <span class="kw">lambda</span> a, b: a + b
        challenges:[
          {type:"mcq",q:"What does: square = lambda x: x**2 do?",opts:["Creates a class","Creates a one-line function","Imports a module","Raises an error"],ans:1,hint:"lambda creates a short anonymous function...",ok:"✅ lambda creates a one-line function!",bad:"❌ lambda creates a small anonymous function."},
          {type:"fill",q:"Complete the lambda:",pre:"triple = lambda x: x ",suf:" 3",ans:["*"],hint:"Triple means multiply by 3...",ok:"✅ x * 3 triples the value!",bad:"❌ Use *: lambda x: x * 3"}
+       ,
+         {type:"mcq",q:"lambda x: x + 1 is best described as…",opts:["A loop","A tiny anonymous function","A class","A string"],ans:1,hint:"A function with no name...",ok:"✅ One-line nameless function!",bad:"❌ Lambdas are anonymous mini-functions."},
+         {type:"mcq",q:"(lambda a, b: a * b)(3, 4) evaluates to…",opts:["7","12","34","Error"],ans:1,hint:"It multiplies...",ok:"✅ 3 × 4 = 12!",bad:"❌ The lambda multiplies: 12."},
+         {type:"fill",q:"Write a doubling mini-function:",pre:"double = ",suf:" x: x * 2",ans:["lambda"],hint:"The keyword for tiny functions...",ok:"✅ lambda x: x*2!",bad:"❌ Use lambda."},
+         {type:"fill",q:"Sort words by their length:",pre:"words.sort(key=lambda w: ",suf:"(w))",ans:["len"],hint:"The length function...",ok:"✅ key=lambda w: len(w)!",bad:"❌ Use len()."}
        ]},
       {id:18,icon:"📊",title:"Sorting & Searching",desc:"Organise your data",
        content:`<p>Python has powerful built-in sorting and searching tools.</p>
@@ -810,6 +900,11 @@ nums.<span class="fn">sort</span>(reverse=<span class="kw">True</span>)
        challenges:[
          {type:"mcq",q:"What does sorted([3,1,2]) return?",opts:["[3,1,2]","[1,2,3]","[3,2,1]","Error"],ans:1,hint:"sorted returns a new sorted list...",ok:"✅ sorted returns [1,2,3]!",bad:"❌ sorted returns a new list in ascending order."},
          {type:"fill",q:"Check if 7 is in a list:",pre:"nums = [1,5,7,9]\nprint(7 ",suf:" nums)",ans:["in"],hint:"Python has an 'in' operator...",ok:"✅ 'in' checks membership!",bad:"❌ Use in: 7 in nums"}
+       ,
+         {type:"mcq",q:"sorted(nums) vs nums.sort() — the difference?",opts:["Identical","sorted returns a NEW list; sort changes in place","sort returns new","sorted modifies"],ans:1,hint:"One keeps the original safe...",ok:"✅ sorted() = new list; .sort() = in place!",bad:"❌ sorted() returns a copy; .sort() modifies the list."},
+         {type:"mcq",q:"What does 3 in [1, 2, 3] evaluate to?",opts:["True","False","3","Error"],ans:0,hint:"Is 3 a member?",ok:"✅ True — in checks membership!",bad:"❌ 3 is in the list → True."},
+         {type:"fill",q:"Sort from biggest to smallest:",pre:"top = sorted(nums, ",suf:"=True)",ans:["reverse"],hint:"Flip the order with...",ok:"✅ reverse=True!",bad:"❌ Use reverse=True."},
+         {type:"fill",q:"Find WHERE 7 is in the list:",pre:"pos = nums.",suf:"(7)",ans:["index"],hint:"Its position...",ok:"✅ .index(7) returns its position!",bad:"❌ Use .index()."}
        ]},
       {id:19,icon:"🤖",title:"Ohbot Basics",desc:"Control a real robot",
        content:`<p>Ohbot is a robot you control with Python!</p>
@@ -823,6 +918,11 @@ ohbot.<span class="fn">reset</span>()</div>
        challenges:[
          {type:"mcq",q:"What does ohbot.wait(2) do?",opts:["Moves head","Pauses 2 seconds","Says 2","Resets"],ans:1,hint:"Wait means pause...",ok:"✅ wait(2) pauses for 2 seconds!",bad:"❌ wait(n) pauses for n seconds."},
          {type:"fill",q:"Make Ohbot speak:",pre:"ohbot.",suf:"('Hello!')",ans:["say"],hint:"What function makes Ohbot speak?",ok:"✅ ohbot.say() makes it speak!",bad:"❌ Use ohbot.say()."}
+       ,
+         {type:"mcq",q:"Which line makes Ohbot speak?",opts:["ohbot.say('Hi')","ohbot.speak('Hi')","say.ohbot('Hi')","print('Hi')"],ans:0,hint:"The say function...",ok:"✅ ohbot.say() speaks out loud!",bad:"❌ Use ohbot.say('Hi')."},
+         {type:"mcq",q:"At the END of an Ohbot program you should call…",opts:["ohbot.close()","ohbot.end()","ohbot.finish()","stop()"],ans:0,hint:"Politely close the connection...",ok:"✅ ohbot.close() tidies up!",bad:"❌ Finish with ohbot.close()."},
+         {type:"fill",q:"Make Ohbot greet the class:",pre:"ohbot.",suf:"(\"Hello class!\")",ans:["say"],hint:"Speaking method...",ok:"✅ ohbot.say()!",bad:"❌ Use say."},
+         {type:"fill",q:"Bring in the Ohbot library:",pre:"from ohbot ",suf:" ohbot",ans:["import"],hint:"Loading keyword...",ok:"✅ from ohbot import ohbot!",bad:"❌ Use import."}
        ]},
       {id:20,icon:"🤖",title:"Ohbot Loops",desc:"Animate the robot",
        content:`<p>Combine loops with Ohbot to make it move repeatedly.</p>
@@ -835,6 +935,11 @@ ohbot.<span class="fn">say</span>(<span class="str">"Done nodding!"</span>)</div
        challenges:[
          {type:"mcq",q:"How many times does Ohbot nod with range(3)?",opts:["1","2","3","4"],ans:2,hint:"range(3) = 0,1,2...",ok:"✅ range(3) = 3 nods!",bad:"❌ range(3) runs 3 times."},
          {type:"fill",q:"Make Ohbot nod 5 times:",pre:"for i in ",suf:":\n    ohbot.move(1,8)\n    ohbot.wait(0.5)\n    ohbot.move(1,2)\n    ohbot.wait(0.5)",ans:["range(5)"],hint:"How do you loop 5 times?",ok:"✅ range(5) loops 5 times!",bad:"❌ Use range(5)."}
+       ,
+         {type:"mcq",q:"Make Ohbot nod exactly 3 times — which loop?",opts:["while True:","for i in range(3):","if nod:","def nod():"],ans:1,hint:"A counted repeat...",ok:"✅ for i in range(3) repeats exactly 3 times!",bad:"❌ Counted repeats = for + range."},
+         {type:"mcq",q:"Pause 1 second between moves with…",opts:["ohbot.wait(1)","pause(1)","ohbot.sleep()","stop(1)"],ans:0,hint:"Ohbot has its own wait...",ok:"✅ ohbot.wait(1)!",bad:"❌ Use ohbot.wait(seconds)."},
+         {type:"fill",q:"Repeat the dance 3 times:",pre:"for i in ",suf:"(3):",ans:["range"],hint:"The counter...",ok:"✅ range(3)!",bad:"❌ Use range()."},
+         {type:"fill",q:"Wait one second:",pre:"ohbot.",suf:"(1)",ans:["wait"],hint:"Patience method...",ok:"✅ ohbot.wait(1)!",bad:"❌ Use wait."}
        ]},
       {id:21,icon:"🤖",title:"Ohbot & Input",desc:"Let users control the robot",
        content:`<p>Combine input() with Ohbot for interactive robot programs.</p>
@@ -846,6 +951,11 @@ ohbot.<span class="fn">say</span>(<span class="str">"Done nodding!"</span>)</div
        challenges:[
          {type:"mcq",q:"What does Ohbot say if you type 'Bob'?",opts:["Welcome back creator","Hello Bob","Bob","Error"],ans:1,hint:"Bob is not Iaroslav so the else runs...",ok:"✅ Else runs: Hello Bob!",bad:"❌ Bob hits the else: Hello Bob."},
          {type:"fill",q:"Get input from the user:",pre:"answer = ",suf:"('What is your name? ')",ans:["input"],hint:"What function gets user input?",ok:"✅ input() gets user text!",bad:"❌ Use input()."}
+       ,
+         {type:"mcq",q:"How do you get the user's name for Ohbot to greet?",opts:["input()","get()","read()","listen()"],ans:0,hint:"The keyboard function...",ok:"✅ input() reads from the keyboard!",bad:"❌ Use input()."},
+         {type:"mcq",q:"ohbot.say(f\"Hi {name}\") uses which Python feature?",opts:["An f-string","A lambda","A list","A while loop"],ans:0,hint:"The f before the quote...",ok:"✅ f-strings insert variables into text!",bad:"❌ That is an f-string."},
+         {type:"fill",q:"Ask for the user's name:",pre:"name = ",suf:"(\"What is your name? \")",ans:["input"],hint:"Keyboard reader...",ok:"✅ input()!",bad:"❌ Use input()."},
+         {type:"fill",q:"Join the greeting and the name:",pre:"ohbot.say(\"Hi \" ",suf:" name)",ans:["+"],hint:"Glue strings with...",ok:"✅ + joins strings!",bad:"❌ Use +."}
        ]},
       {id:22,icon:"🧮",title:"Maths & Operators",desc:"Calculate with Python",
        content:`<p>Python supports many maths operators.</p>
@@ -859,6 +969,11 @@ ohbot.<span class="fn">say</span>(<span class="str">"Done nodding!"</span>)</div
        challenges:[
          {type:"mcq",q:"What does 10 % 3 return?",opts:["3","3.33","1","0"],ans:2,hint:"% gives the remainder after dividing...",ok:"✅ 10 % 3 = 1 (remainder)!",bad:"❌ % is modulo — it gives the remainder: 1."},
          {type:"fill",q:"Calculate 2 to the power of 8:",pre:"result = 2 ",suf:" 8\nprint(result)",ans:["**","** "],hint:"Python uses ** for powers...",ok:"✅ ** is the power operator!",bad:"❌ Use **: 2 ** 8"}
+       ,
+         {type:"mcq",q:"What is 7 // 2?",opts:["3.5","3","4","1"],ans:1,hint:"Floor division drops the decimals...",ok:"✅ // divides and rounds DOWN: 3!",bad:"❌ Floor division: 7//2 = 3."},
+         {type:"mcq",q:"What is 2 ** 3?",opts:["6","8","9","5"],ans:1,hint:"Power operator...",ok:"✅ 2³ = 8!",bad:"❌ ** is power: 2**3 = 8."},
+         {type:"fill",q:"Get the remainder of 10 ÷ 3:",pre:"r = 10 ",suf:" 3",ans:["%"],hint:"Modulo...",ok:"✅ % gives the remainder: 1!",bad:"❌ Use %."},
+         {type:"fill",q:"Shorthand for x = x + 1:",pre:"x ",suf:" 1",ans:["+="],hint:"Add-and-assign...",ok:"✅ x += 1!",bad:"❌ Use +=."}
        ]},
       {id:23,icon:"🔍",title:"Boolean Logic",desc:"True, False and logic operators",
        content:`<p>Combine conditions with <strong>and</strong>, <strong>or</strong>, <strong>not</strong>.</p>
@@ -872,6 +987,11 @@ has_ticket = <span class="kw">True</span>
        challenges:[
          {type:"mcq",q:"When is 'A and B' True?",opts:["When A is True","When B is True","When both A and B are True","When either is True"],ans:2,hint:"AND requires both to be true...",ok:"✅ Both must be True for 'and'!",bad:"❌ 'and' needs both conditions to be True."},
          {type:"fill",q:"Check if x is positive OR zero:",pre:"if x > 0 ",suf:" x == 0:\n    print('Non-negative')",ans:["or"],hint:"Either condition can be true...",ok:"✅ 'or' means either condition works!",bad:"❌ Use or: x > 0 or x == 0"}
+       ,
+         {type:"mcq",q:"True and False evaluates to…",opts:["True","False","Error","None"],ans:1,hint:"and needs BOTH...",ok:"✅ and requires both True → False!",bad:"❌ One False makes and False."},
+         {type:"mcq",q:"not (5 > 3) evaluates to…",opts:["True","False","5","3"],ans:1,hint:"5>3 is True, then flip...",ok:"✅ not True → False!",bad:"❌ not flips True to False."},
+         {type:"fill",q:"Pass if EITHER condition holds:",pre:"if has_key ",suf:" knows_code:",ans:["or"],hint:"One is enough...",ok:"✅ or needs just one True!",bad:"❌ Use or."},
+         {type:"fill",q:"Pass only if BOTH hold:",pre:"if logged_in ",suf:" is_admin:",ans:["and"],hint:"Both required...",ok:"✅ and needs both!",bad:"❌ Use and."}
        ]},
       {id:24,icon:"🏁",title:"Final Project",desc:"Build a mini quiz game",
        content:`<p>Put it all together — build a quiz game with functions, loops, and scoring!</p>
@@ -889,13 +1009,43 @@ score += <span class="fn">ask</span>(<span class="str">"Capital of France?"</spa
        challenges:[
          {type:"mcq",q:"What does .lower() do to a string?",opts:["Makes it uppercase","Makes it lowercase","Removes spaces","Reverses it"],ans:1,hint:"Lower means small letters...",ok:"✅ .lower() converts to lowercase!",bad:"❌ .lower() makes all letters lowercase."},
          {type:"fill",q:"Add 1 to score using +=:",pre:"score = 0\nscore ",suf:" 1\nprint(score)",ans:["+="],hint:"Short way to add to a variable...",ok:"✅ += adds to the current value!",bad:"❌ Use +=: score += 1"}
+       ,
+         {type:"mcq",q:"Best structure to store each player's score by name?",opts:["A dictionary","A print statement","A while loop","A comment"],ans:0,hint:"Names → values...",ok:"✅ A dict maps names to scores!",bad:"❌ Dictionaries map keys (names) to values (scores)."},
+         {type:"mcq",q:"A game that keeps asking until the player quits uses…",opts:["while","import","def only","class only"],ans:0,hint:"Loop until told to stop...",ok:"✅ A while loop keeps the game running!",bad:"❌ Game loops are while loops."},
+         {type:"fill",q:"Run your main function:",pre:"def main():\n    print(\"Game on!\")\n\n",suf:"()",ans:["main"],hint:"Call it by name...",ok:"✅ main() starts everything!",bad:"❌ Call main()."},
+         {type:"fill",q:"Leave the game loop when the player quits:",pre:"if answer == \"quit\":\n    ",suf:"",ans:["break"],hint:"Exit the loop...",ok:"✅ break ends the loop!",bad:"❌ Use break."}
        ]}
     ,
-      {id:25,icon:"🪜",title:"Elif Chains",desc:"Multiple conditions in order",content:`<p>Chain many conditions with <strong>elif</strong> — Python checks top to bottom and runs the <em>first</em> match only.</p><div class="code-box">score = <span class="num">73</span>\n<span class="kw">if</span> score >= <span class="num">90</span>:\n    <span class="fn">print</span>(<span class="str">"Gold"</span>)\n<span class="kw">elif</span> score >= <span class="num">75</span>:\n    <span class="fn">print</span>(<span class="str">"Silver"</span>)\n<span class="kw">elif</span> score >= <span class="num">60</span>:\n    <span class="fn">print</span>(<span class="str">"Bronze"</span>)\n<span class="kw">else</span>:\n    <span class="fn">print</span>(<span class="str">"Try again"</span>)</div>`,challenges:[{type:"mcq",q:"With score = 73, what prints?",opts:["Gold","Silver","Bronze","Try again"],ans:2,hint:"73 fails >=90 and >=75, passes >=60...",ok:"✅ 73 reaches the >= 60 check first — Bronze!",bad:"❌ Python checks in order: 73 < 90, 73 < 75, but 73 >= 60 → Bronze."},{type:"fill",q:"Add a middle condition:",pre:"if x > 100:\n    print('big')\n",suf:" x > 50:\n    print('medium')",ans:["elif"],hint:"Not 'else if' — Python shortens it...",ok:"✅ elif checks another condition!",bad:"❌ Python uses elif."}]},
-      {id:26,icon:"🎁",title:"Nested Ifs",desc:"Conditions inside conditions",content:`<p>An <strong>if inside an if</strong> — the inner check only runs when the outer one passes.</p><div class="code-box">age = <span class="num">14</span>\nhas_ticket = <span class="kw">True</span>\n<span class="kw">if</span> age >= <span class="num">12</span>:\n    <span class="kw">if</span> has_ticket:\n        <span class="fn">print</span>(<span class="str">"Enjoy the film!"</span>)\n    <span class="kw">else</span>:\n        <span class="fn">print</span>(<span class="str">"Buy a ticket first"</span>)\n<span class="kw">else</span>:\n    <span class="fn">print</span>(<span class="str">"Too young for this film"</span>)</div>`,challenges:[{type:"mcq",q:"When does the inner if run?",opts:["Always","Only if the outer condition is True","Only if the outer is False","Never"],ans:1,hint:"Inner code needs the outer gate to open...",ok:"✅ The inner if only runs when the outer passes!",bad:"❌ Nested ifs only run when their outer condition is True."},{type:"fill",q:"age=14, has_ticket=False — what prints?",pre:"# Answer: 'Buy a ticket ",suf:"'",ans:["first"],hint:"Outer passes (14>=12), inner fails...",ok:"✅ Outer True, inner False → else branch!",bad:"❌ 14 >= 12 passes, has_ticket is False → 'Buy a ticket first'."}]},
-      {id:27,icon:"⚖️",title:"Ternary Expressions",desc:"One-line if/else",content:`<p>Python can squeeze an if/else into <strong>one line</strong> — great for simple choices.</p><div class="code-box">age = <span class="num">15</span>\nstatus = <span class="str">"teen"</span> <span class="kw">if</span> age < <span class="num">18</span> <span class="kw">else</span> <span class="str">"adult"</span>\n<span class="fn">print</span>(status)  <span class="cm"># teen</span>\n\nprice = <span class="num">5</span> <span class="kw">if</span> is_member <span class="kw">else</span> <span class="num">10</span></div>`,challenges:[{type:"mcq",q:"What is the correct ternary order in Python?",opts:["condition if value else other","value if condition else other","if condition then value else other","value ? condition : other"],ans:1,hint:"The value comes first in Python...",ok:"✅ value_if_true if condition else value_if_false!",bad:"❌ Python order: result if condition else alternative."},{type:"fill",q:"One-line grade check:",pre:'result = "pass" ',suf:' score >= 60 else "fail"',ans:["if"],hint:"value IF condition else other...",ok:"✅ The condition sits in the middle with if!",bad:"❌ Use if between the value and condition."}]},
-      {id:28,icon:"✨",title:"Truthiness",desc:"What counts as True?",content:`<p>Python treats some values as <strong>False</strong> automatically: <code>0</code>, <code>""</code>, <code>[]</code>, <code>None</code>. Everything else is <strong>truthy</strong>.</p><div class="code-box">name = <span class="str">""</span>\n<span class="kw">if</span> name:\n    <span class="fn">print</span>(<span class="str">"Hello"</span>, name)\n<span class="kw">else</span>:\n    <span class="fn">print</span>(<span class="str">"Name is empty!"</span>)\n\nitems = [<span class="num">1</span>, <span class="num">2</span>]\n<span class="kw">if</span> items:  <span class="cm"># list has stuff → True</span>\n    <span class="fn">print</span>(<span class="str">"Got items!"</span>)</div>`,challenges:[{type:"mcq",q:"Which value is truthy?",opts:["0",'""',"[1]","None"],ans:2,hint:"A list with something inside...",ok:"✅ A non-empty list is truthy!",bad:"❌ 0, empty string and None are falsy — [1] has content, so it is truthy."},{type:"fill",q:"Check if a list has items:",pre:"if ",suf:":\n    print('not empty')",ans:["items","my_list","lst"],hint:"Just use the list itself as the condition...",ok:"✅ A non-empty list acts as True!",bad:"❌ Just write: if items:"}]},
-      {id:29,icon:"🔗",title:"Comparison Chaining",desc:"Elegant range checks",content:`<p>Python lets you <strong>chain comparisons</strong> like maths class — no need for <code>and</code>.</p><div class="code-box">age = <span class="num">14</span>\n<span class="cm"># Instead of: age >= 12 and age <= 17</span>\n<span class="kw">if</span> <span class="num">12</span> <= age <= <span class="num">17</span>:\n    <span class="fn">print</span>(<span class="str">"Teenager"</span>)\n\nx = <span class="num">5</span>\n<span class="fn">print</span>(<span class="num">0</span> < x < <span class="num">10</span>)  <span class="cm"># True</span></div>`,challenges:[{type:"mcq",q:"What does 1 < 5 < 3 evaluate to?",opts:["True","False","Error","5"],ans:1,hint:"Both parts must hold: 1<5 AND 5<3...",ok:"✅ 5 < 3 is False, so the chain is False!",bad:"❌ Chains need every link true: 1<5 ✓ but 5<3 ✗ → False."},{type:"fill",q:"Check if temp is between 18 and 25:",pre:"if 18 ",suf:" temp <= 25:\n    print('comfy')",ans:["<="],hint:"Chain it like maths...",ok:"✅ 18 <= temp <= 25 — beautiful Python!",bad:"❌ Use <=: 18 <= temp <= 25"}]}
+      {id:25,icon:"🪜",title:"Elif Chains",desc:"Multiple conditions in order",content:`<p>Chain many conditions with <strong>elif</strong> — Python checks top to bottom and runs the <em>first</em> match only.</p><div class="code-box">score = <span class="num">73</span>\n<span class="kw">if</span> score >= <span class="num">90</span>:\n    <span class="fn">print</span>(<span class="str">"Gold"</span>)\n<span class="kw">elif</span> score >= <span class="num">75</span>:\n    <span class="fn">print</span>(<span class="str">"Silver"</span>)\n<span class="kw">elif</span> score >= <span class="num">60</span>:\n    <span class="fn">print</span>(<span class="str">"Bronze"</span>)\n<span class="kw">else</span>:\n    <span class="fn">print</span>(<span class="str">"Try again"</span>)</div>`,challenges:[{type:"mcq",q:"With score = 73, what prints?",opts:["Gold","Silver","Bronze","Try again"],ans:2,hint:"73 fails >=90 and >=75, passes >=60...",ok:"✅ 73 reaches the >= 60 check first — Bronze!",bad:"❌ Python checks in order: 73 < 90, 73 < 75, but 73 >= 60 → Bronze."},{type:"fill",q:"Add a middle condition:",pre:"if x > 100:\n    print('big')\n",suf:" x > 50:\n    print('medium')",ans:["elif"],hint:"Not 'else if' — Python shortens it...",ok:"✅ elif checks another condition!",bad:"❌ Python uses elif."},
+         {type:"mcq",q:"An elif branch is checked only when…",opts:["Always","All previous conditions were False","After else","Randomly"],ans:1,hint:"It waits its turn...",ok:"✅ elif runs only if everything above failed!",bad:"❌ elif is checked after previous branches are False."},
+         {type:"mcq",q:"How many elif branches can a chain have?",opts:["One","Two","As many as you want","Three max"],ans:2,hint:"No limit...",ok:"✅ Unlimited elifs!",bad:"❌ You can stack as many as needed."},
+         {type:"fill",q:"Add the middle branch:",pre:"if score >= 90:\n    grade = \"A\"\n",suf:" score >= 70:\n    grade = \"B\"",ans:["elif"],hint:"Between if and else...",ok:"✅ elif!",bad:"❌ Use elif."},
+         {type:"fill",q:"Catch everything else:",pre:"",suf:":\n    grade = \"F\"",ans:["else"],hint:"The fallback...",ok:"✅ else handles the rest!",bad:"❌ Use else."}
+       ]},
+      {id:26,icon:"🎁",title:"Nested Ifs",desc:"Conditions inside conditions",content:`<p>An <strong>if inside an if</strong> — the inner check only runs when the outer one passes.</p><div class="code-box">age = <span class="num">14</span>\nhas_ticket = <span class="kw">True</span>\n<span class="kw">if</span> age >= <span class="num">12</span>:\n    <span class="kw">if</span> has_ticket:\n        <span class="fn">print</span>(<span class="str">"Enjoy the film!"</span>)\n    <span class="kw">else</span>:\n        <span class="fn">print</span>(<span class="str">"Buy a ticket first"</span>)\n<span class="kw">else</span>:\n    <span class="fn">print</span>(<span class="str">"Too young for this film"</span>)</div>`,challenges:[{type:"mcq",q:"When does the inner if run?",opts:["Always","Only if the outer condition is True","Only if the outer is False","Never"],ans:1,hint:"Inner code needs the outer gate to open...",ok:"✅ The inner if only runs when the outer passes!",bad:"❌ Nested ifs only run when their outer condition is True."},{type:"fill",q:"age=14, has_ticket=False — what prints?",pre:"# Answer: 'Buy a ticket ",suf:"'",ans:["first"],hint:"Outer passes (14>=12), inner fails...",ok:"✅ Outer True, inner False → else branch!",bad:"❌ 14 >= 12 passes, has_ticket is False → 'Buy a ticket first'."},
+         {type:"mcq",q:"The inner if runs only when…",opts:["The outer if was True","The outer if was False","Always","Never"],ans:0,hint:"You must enter the outer block first...",ok:"✅ Inner code needs the outer condition True!",bad:"❌ You only reach the inner if through the outer one."},
+         {type:"mcq",q:"The inner if's body is indented…",opts:["Same as outer","One level deeper than the inner if","Not at all","Less than outer"],ans:1,hint:"Every block steps right...",ok:"✅ Each nested block adds one indent level!",bad:"❌ Nested blocks indent one more level."},
+         {type:"fill",q:"Nest the admin check:",pre:"if logged_in:\n    ",suf:" is_admin:\n        print(\"Panel\")",ans:["if"],hint:"An if inside an if...",ok:"✅ Nested if!",bad:"❌ Use if."},
+         {type:"fill",q:"Same logic WITHOUT nesting:",pre:"if logged_in ",suf:" is_admin:\n    print(\"Panel\")",ans:["and"],hint:"Combine both checks...",ok:"✅ and flattens the nesting!",bad:"❌ Use and."}
+       ]},
+      {id:27,icon:"⚖️",title:"Ternary Expressions",desc:"One-line if/else",content:`<p>Python can squeeze an if/else into <strong>one line</strong> — great for simple choices.</p><div class="code-box">age = <span class="num">15</span>\nstatus = <span class="str">"teen"</span> <span class="kw">if</span> age < <span class="num">18</span> <span class="kw">else</span> <span class="str">"adult"</span>\n<span class="fn">print</span>(status)  <span class="cm"># teen</span>\n\nprice = <span class="num">5</span> <span class="kw">if</span> is_member <span class="kw">else</span> <span class="num">10</span></div>`,challenges:[{type:"mcq",q:"What is the correct ternary order in Python?",opts:["condition if value else other","value if condition else other","if condition then value else other","value ? condition : other"],ans:1,hint:"The value comes first in Python...",ok:"✅ value_if_true if condition else value_if_false!",bad:"❌ Python order: result if condition else alternative."},{type:"fill",q:"One-line grade check:",pre:'result = "pass" ',suf:' score >= 60 else "fail"',ans:["if"],hint:"value IF condition else other...",ok:"✅ The condition sits in the middle with if!",bad:"❌ Use if between the value and condition."},
+         {type:"mcq",q:"x = 5. What is: \"big\" if x > 9 else \"small\"?",opts:["big","small","Error","None"],ans:1,hint:"Is 5 > 9?",ok:"✅ Condition False → the else value: small!",bad:"❌ 5 > 9 is False, so you get \"small\"."},
+         {type:"mcq",q:"The correct ternary order is…",opts:["value_if_true if condition else value_if_false","if condition value else value","condition ? a : b","a else b if condition"],ans:0,hint:"Value first, then if...",ok:"✅ A if cond else B!",bad:"❌ Python style: A if condition else B."},
+         {type:"fill",q:"Complete the one-liner:",pre:"label = \"even\" ",suf:" n % 2 == 0 else \"odd\"",ans:["if"],hint:"The condition follows...",ok:"✅ value if condition else other!",bad:"❌ Use if."},
+         {type:"fill",q:"Finish the ternary:",pre:"parity = \"even\" if n % 2 == 0 ",suf:" \"odd\"",ans:["else"],hint:"The alternative...",ok:"✅ else supplies the other value!",bad:"❌ Use else."}
+       ]},
+      {id:28,icon:"✨",title:"Truthiness",desc:"What counts as True?",content:`<p>Python treats some values as <strong>False</strong> automatically: <code>0</code>, <code>""</code>, <code>[]</code>, <code>None</code>. Everything else is <strong>truthy</strong>.</p><div class="code-box">name = <span class="str">""</span>\n<span class="kw">if</span> name:\n    <span class="fn">print</span>(<span class="str">"Hello"</span>, name)\n<span class="kw">else</span>:\n    <span class="fn">print</span>(<span class="str">"Name is empty!"</span>)\n\nitems = [<span class="num">1</span>, <span class="num">2</span>]\n<span class="kw">if</span> items:  <span class="cm"># list has stuff → True</span>\n    <span class="fn">print</span>(<span class="str">"Got items!"</span>)</div>`,challenges:[{type:"mcq",q:"Which value is truthy?",opts:["0",'""',"[1]","None"],ans:2,hint:"A list with something inside...",ok:"✅ A non-empty list is truthy!",bad:"❌ 0, empty string and None are falsy — [1] has content, so it is truthy."},{type:"fill",q:"Check if a list has items:",pre:"if ",suf:":\n    print('not empty')",ans:["items","my_list","lst"],hint:"Just use the list itself as the condition...",ok:"✅ A non-empty list acts as True!",bad:"❌ Just write: if items:"},
+         {type:"mcq",q:"Which of these is FALSY?",opts:["[0]","\"0\"","0","\"False\""],ans:2,hint:"Non-empty things are truthy...",ok:"✅ The number 0 is falsy; the others are non-empty!",bad:"❌ 0 is falsy — but \"0\", \"False\" and [0] are truthy!"},
+         {type:"mcq",q:"bool(\"\") evaluates to…",opts:["True","False","Error","\"\""],ans:1,hint:"An EMPTY string...",ok:"✅ Empty string → False!",bad:"❌ Empty strings are falsy."},
+         {type:"fill",q:"Use truthiness to check the list has items:",pre:"if ",suf:":\n    print(\"has items\")",ans:["items"],hint:"Just the list itself...",ok:"✅ A non-empty list is truthy by itself!",bad:"❌ Just write the list name: if items:."},
+         {type:"fill",q:"Convert to True/False explicitly:",pre:"print(",suf:"([]))",ans:["bool"],hint:"The boolean converter...",ok:"✅ bool([]) → False!",bad:"❌ Use bool()."}
+       ]},
+      {id:29,icon:"🔗",title:"Comparison Chaining",desc:"Elegant range checks",content:`<p>Python lets you <strong>chain comparisons</strong> like maths class — no need for <code>and</code>.</p><div class="code-box">age = <span class="num">14</span>\n<span class="cm"># Instead of: age >= 12 and age <= 17</span>\n<span class="kw">if</span> <span class="num">12</span> <= age <= <span class="num">17</span>:\n    <span class="fn">print</span>(<span class="str">"Teenager"</span>)\n\nx = <span class="num">5</span>\n<span class="fn">print</span>(<span class="num">0</span> < x < <span class="num">10</span>)  <span class="cm"># True</span></div>`,challenges:[{type:"mcq",q:"What does 1 < 5 < 3 evaluate to?",opts:["True","False","Error","5"],ans:1,hint:"Both parts must hold: 1<5 AND 5<3...",ok:"✅ 5 < 3 is False, so the chain is False!",bad:"❌ Chains need every link true: 1<5 ✓ but 5<3 ✗ → False."},{type:"fill",q:"Check if temp is between 18 and 25:",pre:"if 18 ",suf:" temp <= 25:\n    print('comfy')",ans:["<="],hint:"Chain it like maths...",ok:"✅ 18 <= temp <= 25 — beautiful Python!",bad:"❌ Use <=: 18 <= temp <= 25"},
+         {type:"mcq",q:"1 < x < 5 is the same as…",opts:["x > 1 and x < 5","x > 1 or x < 5","(1 < x) < 5 as numbers","An error"],ans:0,hint:"Python secretly adds an and...",ok:"✅ Chains expand with and!",bad:"❌ Chained comparisons mean both parts with and."},
+         {type:"mcq",q:"What does 3 < 3 <= 3 evaluate to?",opts:["True","False","3","Error"],ans:1,hint:"Check the FIRST link...",ok:"✅ 3 < 3 is already False → whole chain False!",bad:"❌ 3 < 3 fails, so the chain is False."},
+         {type:"fill",q:"Score must be between 0 and 100:",pre:"if 0 ",suf:" score <= 100:",ans:["<=","<"],hint:"Allow zero too...",ok:"✅ 0 <= score <= 100!",bad:"❌ Use <=."},
+         {type:"fill",q:"Teenager check (13 to 19):",pre:"if 13 <= age ",suf:" 19:",ans:["<="],hint:"Include 19...",ok:"✅ 13 <= age <= 19!",bad:"❌ Use <=."}
+       ]}
     ]
   },
 
