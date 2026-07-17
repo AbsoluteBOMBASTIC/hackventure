@@ -1524,6 +1524,8 @@ let session = { lessonId:0, stepIdx:0, hearts:3, correct:0, total:0 };
 let isGuest = false;
 
 function getU() { return S.users[S.currentUser]; }
+const MAX_CROWNS = 3;
+function crownLevel(u, lang, lid){ const done=((u.progress&&u.progress[lang])||[]).map(String).includes(String(lid)); const c=(u.crowns&&u.crowns[lang]&&u.crowns[lang][lid])||0; return done?Math.max(1,c):0; }
 function save() { try { localStorage.setItem('cq3', JSON.stringify(S)); } catch(e){} }
 function load() {
   try {
@@ -2188,7 +2190,7 @@ function renderHome() {
                   ${lessonDone ? '<div class="node-check">✓</div>' : ''}
                   ${isCur ? '<div class="node-bubble">START</div>' : ''}
                 </div>
-                <div class="node-label">${title}</div>
+                <div class="node-label">${title}${lessonDone ? '<br><span style="color:#f59e0b;font-size:0.62rem;font-weight:800">👑 '+crownLevel(getU(),activeLang,id)+'/'+MAX_CROWNS+'</span>' : ''}</div>
               </div>
             </div>`;
         }
@@ -2329,6 +2331,8 @@ async function startAILesson(lang, si, ui, li) {
 
   // Pre-written lesson exists at this global index
   if (langData.lessons[g]) {
+    const _u = getU();
+    const _done = ((_u.progress&&_u.progress[lang])||[]).map(String).includes(String(g));
     session = {
       lessonId: g,
       lessonIdStr: String(g),
@@ -2336,7 +2340,9 @@ async function startAILesson(lang, si, ui, li) {
       correct: 0,
       total: langData.lessons[g].challenges.length,
       si, ui, li,
-      isAI: false
+      isAI: false,
+      isReplay: _done,
+      crownLevel: _done ? crownLevel(_u, lang, String(g)) : 0
     };
     hideFB();
     renderStep();
@@ -2467,7 +2473,7 @@ function renderChallenge(lesson, ch, idx, total) {
             <div class="opt-ltr">${ltrs[i]}</div><span>${o}</span>
           </button>`).join('')}
       </div>
-      <button class="hint-btn" id="hintBtn" onclick="aiHint()">🤖 AI Hint</button>
+      ${session.isReplay ? '' : '<button class="hint-btn" id="hintBtn" onclick="aiHint()">🤖 AI Hint</button>'}
       <div class="hint-box" id="hintBox"></div>`;
   } else {
     body = `
@@ -2475,7 +2481,7 @@ function renderChallenge(lesson, ch, idx, total) {
       <div class="ch-code">${(ch.pre||'')}<span style="color:#f59e0b;background:rgba(245,158,11,0.12);padding:2px 6px;border-radius:4px">___</span>${(ch.suf||'')}</div>
       <input class="fill-input" id="fillIn" placeholder="your answer..." autocapitalize="none" autocorrect="off" spellcheck="false"/>
       <button class="submit-btn" onclick="checkFill()">Check Answer →</button>
-      <button class="hint-btn" id="hintBtn" onclick="aiHint()">🤖 AI Hint</button>
+      ${session.isReplay ? '' : '<button class="hint-btn" id="hintBtn" onclick="aiHint()">🤖 AI Hint</button>'}
       <div class="hint-box" id="hintBox"></div>`;
   }
   document.getElementById('lessonBody').innerHTML = `
@@ -2558,8 +2564,16 @@ function finishLesson() {
     u.progress[activeLang].push(lid);
     gainedXP = 50 * mult;
     gainedGems = 3 + (isPerfect ? 2 : 0);
+    u.crowns = u.crowns || {}; u.crowns[activeLang] = u.crowns[activeLang] || {};
+    u.crowns[activeLang][lid] = 1;
+  } else {
+    u.crowns = u.crowns || {}; u.crowns[activeLang] = u.crowns[activeLang] || {};
+    const _cur = Math.max(1, u.crowns[activeLang][lid] || 1);
+    if (_cur < MAX_CROWNS) { u.crowns[activeLang][lid] = _cur + 1; gainedXP = 30 * mult; gainedGems = 2; session.crownEarned = _cur + 1; }
+    else { gainedXP = 15 * mult; gainedGems = 1; }
   }
   u.xp += gainedXP;
+  session.finishXP = gainedXP;
   u.gems = (u.gems || 0) + gainedGems;
   if (gainedXP > 0) {
     toast('+' + gainedXP + ' XP · +' + gainedGems + ' 💎' + (mult > 1 ? ' (' + mult + '× boost!)' : ''));
@@ -2592,11 +2606,11 @@ function finishLesson() {
 
   document.getElementById('lessonBody').innerHTML = `
     <div class="complete-wrap">
-      <div class="complete-icon">${isPerfect?'🏆':'🎉'}</div>
-      <div class="complete-title">${isPerfect?'Flawless!':'Lesson Complete!'}</div>
+      <div class="complete-icon">${session.crownEarned?'👑':(isPerfect?'🏆':'🎉')}</div>
+      <div class="complete-title">${session.crownEarned?('👑 Crown '+session.crownEarned+' earned!'):(isPerfect?'Flawless!':'Lesson Complete!')}</div>
       <div class="complete-sub">${lang.icon} ${lang.name} · ${lesson?.title || 'Lesson'}<br>${isPerfect?'💎 Perfect score — every challenge nailed!':'You got <strong>'+session.correct+' of '+session.total+'</strong> correct.'}</div>
       <div class="complete-stats">
-        <div class="cs"><div class="csn" style="color:#a78bfa">+${session.correct*20+50}</div><div class="csl">XP</div></div>
+        <div class="cs"><div class="csn" style="color:#a78bfa">+${session.correct*20+(session.finishXP||0)}</div><div class="csl">XP</div></div>
         <div class="cs"><div class="csn" style="color:#f59e0b">${u.streak}🔥</div><div class="csl">Streak</div></div>
         <div class="cs"><div class="csn" style="color:#34d399">${acc}%</div><div class="csl">Accuracy</div></div>
       </div>
