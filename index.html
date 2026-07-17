@@ -1525,6 +1525,11 @@ let isGuest = false;
 
 function getU() { return S.users[S.currentUser]; }
 const MAX_CROWNS = 3;
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+function shuffleChallenge(ch){ if(ch.type!=='mcq'||!Array.isArray(ch.opts)) return ch; const correct=ch.opts[ch.ans]; const opts=shuffle(ch.opts); return Object.assign({}, ch, {opts:opts, ans:opts.indexOf(correct)}); }
+function buildCrownPool(lang, g){ const ls=LANGUAGES[lang].lessons; const own=(ls[g]&&ls[g].challenges)||[]; const sib=(ls[g^1]&&ls[g^1].challenges)||[]; let pool=shuffle(own.concat(sib)).map(shuffleChallenge); if(pool.length>5) pool=pool.slice(0,5); return pool; }
+function curChallenges(){ return session.challenges || getActiveLesson().challenges; }
 function crownLevel(u, lang, lid){ const done=((u.progress&&u.progress[lang])||[]).map(String).includes(String(lid)); const c=(u.crowns&&u.crowns[lang]&&u.crowns[lang][lid])||0; return done?Math.max(1,c):0; }
 function save() { try { localStorage.setItem('cq3', JSON.stringify(S)); } catch(e){} }
 function load() {
@@ -2162,7 +2167,9 @@ function renderHome() {
 
           let bg, shadow;
           if (lessonDone) {
-            bg = 'background:#34d399'; shadow = 'box-shadow:0 6px 0 #2a9d74';
+            const _mx = crownLevel(getU(),activeLang,id) >= MAX_CROWNS;
+            bg = _mx ? 'background:linear-gradient(135deg,#fbbf24,#f59e0b)' : 'background:#34d399';
+            shadow = _mx ? 'box-shadow:0 6px 0 #b8860b' : 'box-shadow:0 6px 0 #2a9d74';
           } else if (isCur) {
             bg = `background:linear-gradient(135deg,${section.color},${section.color2})`; 
             shadow = `box-shadow:0 6px 0 ${section.color}99`;
@@ -2190,7 +2197,7 @@ function renderHome() {
                   ${lessonDone ? '<div class="node-check">✓</div>' : ''}
                   ${isCur ? '<div class="node-bubble">START</div>' : ''}
                 </div>
-                <div class="node-label">${title}${lessonDone ? '<br><span style="color:#f59e0b;font-size:0.62rem;font-weight:800">👑 '+crownLevel(getU(),activeLang,id)+'/'+MAX_CROWNS+'</span>' : ''}</div>
+                <div class="node-label">${title}${lessonDone ? '<br><span style="font-size:0.62rem;font-weight:800;color:'+(crownLevel(getU(),activeLang,id)>=MAX_CROWNS?'#fbbf24':'#f59e0b')+'">👑 '+(crownLevel(getU(),activeLang,id)>=MAX_CROWNS?'MAX':crownLevel(getU(),activeLang,id)+'/'+MAX_CROWNS)+'</span>' : ''}</div>
               </div>
             </div>`;
         }
@@ -2333,16 +2340,18 @@ async function startAILesson(lang, si, ui, li) {
   if (langData.lessons[g]) {
     const _u = getU();
     const _done = ((_u.progress&&_u.progress[lang])||[]).map(String).includes(String(g));
+    const _pool = _done ? buildCrownPool(lang, g) : null;
     session = {
       lessonId: g,
       lessonIdStr: String(g),
       stepIdx: 0, hearts: 3,
       correct: 0,
-      total: langData.lessons[g].challenges.length,
+      total: (_pool ? _pool.length : langData.lessons[g].challenges.length),
       si, ui, li,
       isAI: false,
       isReplay: _done,
-      crownLevel: _done ? crownLevel(_u, lang, String(g)) : 0
+      crownLevel: _done ? crownLevel(_u, lang, String(g)) : 0,
+      challenges: _pool
     };
     hideFB();
     renderStep();
@@ -2438,14 +2447,15 @@ function getActiveLesson() {
 function renderStep() {
   const lesson = getActiveLesson();
   if (!lesson) { finishLesson(); return; }
-  const total = lesson.challenges.length + 1;
+  const _chs = curChallenges();
+  const total = _chs.length + 1;
   document.getElementById('progFill').style.width = ((session.stepIdx / total) * 100) + '%';
   document.getElementById('heartsRow').innerHTML = '❤️'.repeat(session.hearts) + '🖤'.repeat(3-session.hearts);
   if (session.stepIdx === 0) renderTeach(LANGUAGES[activeLang], lesson);
   else {
-    const ch = lesson.challenges[session.stepIdx - 1];
+    const ch = _chs[session.stepIdx - 1];
     if (!ch) { finishLesson(); return; }
-    renderChallenge(lesson, ch, session.stepIdx, lesson.challenges.length);
+    renderChallenge(lesson, ch, session.stepIdx, _chs.length);
   }
 }
 
@@ -2470,7 +2480,7 @@ function renderChallenge(lesson, ch, idx, total) {
       <div class="opts" id="opts">
         ${ch.opts.map((o,i)=>`
           <button class="opt-btn" id="o${i}" onclick="checkMCQ(${i})">
-            <div class="opt-ltr">${ltrs[i]}</div><span>${o}</span>
+            <div class="opt-ltr">${ltrs[i]}</div><span>${esc(o)}</span>
           </button>`).join('')}
       </div>
       ${session.isReplay ? '' : '<button class="hint-btn" id="hintBtn" onclick="aiHint()">🤖 AI Hint</button>'}
@@ -2478,7 +2488,7 @@ function renderChallenge(lesson, ch, idx, total) {
   } else {
     body = `
       <div style="font-size:0.72rem;color:var(--muted);font-weight:700;margin-bottom:6px;font-family:'JetBrains Mono',monospace">Fill in the blank:</div>
-      <div class="ch-code">${(ch.pre||'')}<span style="color:#f59e0b;background:rgba(245,158,11,0.12);padding:2px 6px;border-radius:4px">___</span>${(ch.suf||'')}</div>
+      <div class="ch-code">${esc(ch.pre||'')}<span style="color:#f59e0b;background:rgba(245,158,11,0.12);padding:2px 6px;border-radius:4px">___</span>${esc(ch.suf||'')}</div>
       <input class="fill-input" id="fillIn" placeholder="your answer..." autocapitalize="none" autocorrect="off" spellcheck="false"/>
       <button class="submit-btn" onclick="checkFill()">Check Answer →</button>
       ${session.isReplay ? '' : '<button class="hint-btn" id="hintBtn" onclick="aiHint()">🤖 AI Hint</button>'}
@@ -2487,7 +2497,7 @@ function renderChallenge(lesson, ch, idx, total) {
   document.getElementById('lessonBody').innerHTML = `
     <div class="challenge-card">
       <div class="ch-badge">🎯 Challenge ${idx} of ${total}</div>
-      <div class="ch-q">${ch.q}</div>
+      <div class="ch-q">${esc(ch.q)}</div>
       ${body}
     </div>`;
   if (ch.type === 'fill') {
@@ -2498,7 +2508,7 @@ function renderChallenge(lesson, ch, idx, total) {
 }
 
 function checkMCQ(chosen) {
-  const ch = LANGUAGES[activeLang].lessons[session.lessonId].challenges[session.stepIdx-1];
+  const ch = curChallenges()[session.stepIdx-1];
   document.querySelectorAll('.opt-btn').forEach(b => b.disabled = true);
   document.getElementById('o'+ch.ans).classList.add('correct');
   const ok = chosen === ch.ans;
@@ -2507,7 +2517,7 @@ function checkMCQ(chosen) {
 }
 
 function checkFill() {
-  const ch = LANGUAGES[activeLang].lessons[session.lessonId].challenges[session.stepIdx-1];
+  const ch = curChallenges()[session.stepIdx-1];
   const inp = document.getElementById('fillIn');
   const val = inp.value.trim();
   if (!val) { toast("Type your answer!"); return; }
@@ -2541,8 +2551,8 @@ function handle(ok, okMsg, badMsg) {
 function nextStep() {
   hideFB();
   session.stepIdx++;
-  const lesson = LANGUAGES[activeLang].lessons[session.lessonId];
-  if (session.stepIdx > lesson.challenges.length) finishLesson();
+  const _cn = curChallenges();
+  if (session.stepIdx > _cn.length) finishLesson();
   else renderStep();
 }
 
@@ -2644,7 +2654,7 @@ function checkBadges(u, lid, isPerfect) {
 // ══════════════════════════════════════════════════
 
 async function aiHint() {
-  const ch = LANGUAGES[activeLang].lessons[session.lessonId].challenges[session.stepIdx-1];
+  const ch = curChallenges()[session.stepIdx-1];
   const lang = LANGUAGES[activeLang];
   const hb = document.getElementById('hintBox');
   const btn = document.getElementById('hintBtn');
