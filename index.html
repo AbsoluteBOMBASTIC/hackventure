@@ -1556,6 +1556,7 @@ let isGuest = false;
 function getU() { return S.users[S.currentUser]; }
 const MAX_CROWNS = 3;
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function ensureLangXp(u){ if(u.langXp && typeof u.langXp==='object') return; const prog=u.progress||{}; let td=0; for(const k in prog){ if(Array.isArray(prog[k])) td+=prog[k].length; } const lx={}; const tx=u.xp||0; if(td>0){ for(const k in prog){ if(Array.isArray(prog[k])&&prog[k].length) lx[k]=Math.round(tx*prog[k].length/td); } } u.langXp=lx; }
 function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
 function shuffleChallenge(ch){ if(ch.type!=='mcq'||!Array.isArray(ch.opts)) return ch; const correct=ch.opts[ch.ans]; const opts=shuffle(ch.opts); return Object.assign({}, ch, {opts:opts, ans:opts.indexOf(correct)}); }
 function buildCrownPool(lang, g){ const ls=LANGUAGES[lang].lessons; const own=(ls[g]&&ls[g].challenges)||[]; const sib=(ls[g^1]&&ls[g^1].challenges)||[]; let pool=shuffle(own.concat(sib)).map(shuffleChallenge); if(pool.length>5) pool=pool.slice(0,5); return pool; }
@@ -1656,11 +1657,11 @@ async function savePlayer(u) {
       boost: u.boost || null,
       updated_at: new Date().toISOString()
     };
-    await sbFetch('players?on_conflict=username', {
-      method: 'POST',
-      prefer: 'resolution=merge-duplicates',
-      body: payload
-    });
+    try {
+      await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: Object.assign({}, payload, { lang_xp: u.langXp || {} }) });
+    } catch(_lx) {
+      await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: payload });
+    }
     showSyncStatus('ok', '✅ Saved!');
   } catch(e) {
     console.error('Supabase save failed:', e.message);
@@ -1681,8 +1682,10 @@ async function loadPlayer(username) {
 async function fetchLeaderboard() {
   if (!SB_CONFIGURED) return null;
   try {
-    return await sbFetch('players?select=username,name,xp,streak,progress,badges&order=xp.desc&limit=50');
-  } catch(e) { return null; }
+    return await sbFetch('players?select=username,name,xp,streak,progress,badges,lang_xp&order=xp.desc&limit=50');
+  } catch(e) {
+    try { return await sbFetch('players?select=username,name,xp,streak,progress,badges&order=xp.desc&limit=50'); } catch(e2){ return null; }
+  }
 }
 
 function refreshLeaderboard() {
@@ -1703,12 +1706,13 @@ async function syncLeaderboard() {
       for (const r of rows) {
         const k = r.username;
         if (!S.users[k]) {
-          S.users[k] = { name: r.name, xp: r.xp || 0, streak: r.streak || 0, progress: r.progress || {}, badges: r.badges || [], correct: 0 };
+          S.users[k] = { name: r.name, xp: r.xp || 0, streak: r.streak || 0, progress: r.progress || {}, badges: r.badges || [], correct: 0, langXp: r.lang_xp || {} };
         } else {
           // Update with fresher cloud data
           S.users[k].xp = Math.max(S.users[k].xp || 0, r.xp || 0);
           S.users[k].streak = r.streak || 0;
           S.users[k].name = r.name;
+          if (r.lang_xp && k !== S.currentUser) S.users[k].langXp = r.lang_xp;
         }
       }
       save();
@@ -2563,7 +2567,9 @@ function handle(ok, okMsg, badMsg) {
   const u = getU();
   if (ok) {
     session.correct++;
+    ensureLangXp(u);
     u.xp += 20; u.correct = (u.correct||0)+1;
+    if(activeLang) u.langXp[activeLang] = (u.langXp[activeLang]||0) + 20;
     save(); updateAllNav();
     xpPop('+20 XP ⭐');
     showFB(true, '🎉 Correct!', okMsg);
@@ -2612,8 +2618,10 @@ function finishLesson() {
     if (_cur < MAX_CROWNS) { u.crowns[activeLang][lid] = _cur + 1; gainedXP = 30 * mult; gainedGems = 2; session.crownEarned = _cur + 1; }
     else { gainedXP = 15 * mult; gainedGems = 1; }
   }
+  ensureLangXp(u);
   u.xp += gainedXP;
   session.finishXP = gainedXP;
+  if(activeLang && gainedXP) u.langXp[activeLang] = (u.langXp[activeLang]||0) + gainedXP;
   u.gems = (u.gems || 0) + gainedGems;
   if (gainedXP > 0) {
     toast('+' + gainedXP + ' XP · +' + gainedGems + ' 💎' + (mult > 1 ? ' (' + mult + '× boost!)' : ''));
@@ -2795,7 +2803,7 @@ function openUserProfile(key){
     const course=COURSE[lk];
     const total = course ? course.sections.length*UNITS_PER_SECTION*UNIT_SIZE : lang.lessons.length;
     const done = (prog[lk]||[]).map(String).filter(id=>/^\d+$/.test(id)&&parseInt(id)<total).length;
-    const xp = totalDone>0 ? Math.round(totalXP*done/totalDone) : 0;
+    const xp = (u.langXp && (lk in u.langXp)) ? (u.langXp[lk]||0) : (totalDone>0 ? Math.round(totalXP*done/totalDone) : 0);
     const pct = total>0 ? Math.round((done/total)*100) : 0;
     return {lang, done, xp, pct};
   }).filter(r=>r.done>0).sort((a,b)=>b.xp-a.xp);
