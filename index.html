@@ -477,8 +477,8 @@ input{font-family:inherit;outline:none;border:none}
       <!-- Sign In form -->
       <div id="formLogin">
         <div class="input-group">
-          <div class="input-label">Username</div>
-          <input class="text-input" id="loginUser" type="text" placeholder="your username" autocomplete="username" autocapitalize="none">
+          <div class="input-label">Username or Email</div>
+          <input class="text-input" id="loginUser" type="text" placeholder="username or you@example.com" autocomplete="username" autocapitalize="none">
         </div>
         <div class="input-group">
           <div class="input-label">Password</div>
@@ -514,6 +514,10 @@ input{font-family:inherit;outline:none;border:none}
         <div class="input-group">
           <div class="input-label">Username</div>
           <input class="text-input" id="signupUser" type="text" placeholder="iaroslav123" autocapitalize="none">
+        </div>
+        <div class="input-group">
+          <div class="input-label">Email</div>
+          <input class="text-input" id="signupEmail" type="email" placeholder="you@example.com" autocomplete="email" autocapitalize="none">
         </div>
         <div class="input-group">
           <div class="input-label">Password</div>
@@ -1658,7 +1662,7 @@ async function savePlayer(u) {
       updated_at: new Date().toISOString()
     };
     try {
-      await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: Object.assign({}, payload, { lang_xp: u.langXp || {} }) });
+      await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: Object.assign({}, payload, { lang_xp: u.langXp || {}, email: u.email || null }) });
     } catch(_lx) {
       await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: payload });
     }
@@ -1674,6 +1678,13 @@ async function loadPlayer(username) {
   if (!SB_CONFIGURED) return null;
   try {
     const rows = await sbFetch('players?username=eq.' + encodeURIComponent(username) + '&limit=1');
+    return rows && rows[0] ? rows[0] : null;
+  } catch(e) { return null; }
+}
+async function loadPlayerByEmail(email) {
+  if (!SB_CONFIGURED) return null;
+  try {
+    const rows = await sbFetch('players?email=eq.' + encodeURIComponent(email) + '&limit=1');
     return rows && rows[0] ? rows[0] : null;
   } catch(e) { return null; }
 }
@@ -1799,14 +1810,21 @@ function doReset() {
 
 async function doLogin() {
   try {
-    const user = document.getElementById('loginUser').value.trim().toLowerCase();
+    let user = document.getElementById('loginUser').value.trim().toLowerCase();
     const pass = document.getElementById('loginPass').value.trim();
     const err = document.getElementById('loginError');
     err.style.color = 'var(--red)';
-    if (!user || !pass) { err.textContent = 'Enter username and password'; return; }
+    if (!user || !pass) { err.textContent = 'Enter username or email, and password'; return; }
 
     const btn = document.getElementById('loginBtn');
     btn.disabled = true; btn.textContent = 'Signing in...';
+
+    // If they typed an email, find the matching username (local, then cloud)
+    if (user.includes('@')) {
+      let found = Object.keys(S.users).find(k => S.users[k].email && S.users[k].email.toLowerCase() === user);
+      if (!found && SB_CONFIGURED) { const byEmail = await loadPlayerByEmail(user); if (byEmail && byEmail.username) found = byEmail.username; }
+      if (found) user = found;
+    }
 
     // Try cloud first if configured and user not found locally
     if (!S.users[user] && SB_CONFIGURED) {
@@ -1815,6 +1833,7 @@ async function doLogin() {
       if (cloud) {
         S.users[user] = {
           name: cloud.name, username: cloud.username,
+          email: cloud.email || null,
           _pass: cloud.pass_hash,
           xp: cloud.xp || 0, streak: cloud.streak || 0,
           progress: cloud.progress || {}, badges: cloud.badges || [],
@@ -1845,19 +1864,24 @@ async function doLogin() {
   }
 }
 
-function doSignup() {
+async function doSignup() {
   try {
     const name = document.getElementById('signupName').value.trim();
     const user = document.getElementById('signupUser').value.trim().toLowerCase();
+    const email = document.getElementById('signupEmail').value.trim().toLowerCase();
     const pass = document.getElementById('signupPass').value.trim();
     const err = document.getElementById('signupError');
-    if (!name || !user || !pass) { err.textContent = 'Fill in all fields'; return; }
+    err.style.color = 'var(--red)';
+    if (!name || !user || !email || !pass) { err.textContent = 'Fill in all fields'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Enter a valid email address'; return; }
+    if (Object.values(S.users).some(x => x.email && x.email.toLowerCase() === email)) { err.textContent = 'That email is already used'; return; }
     if (pass.length < 6) { err.textContent = 'Password must be 6+ characters'; return; }
     if (!/^[a-z0-9_]+$/.test(user)) { err.textContent = 'Username: letters, numbers, _ only'; return; }
     if (S.users[user]) { err.textContent = 'Username taken — choose another'; return; }
     const btn = document.getElementById('signupBtn');
     btn.disabled = true; btn.textContent = 'Creating...';
-    S.users[user] = { name, username:user, _pass:hashPass(pass), xp:0, streak:0, progress:{}, badges:[], correct:0, lastLang:'python', lastStudiedDate:null };
+    if (SB_CONFIGURED) { const dup = await loadPlayerByEmail(email); if (dup) { err.style.color = 'var(--red)'; err.textContent = 'That email is already registered'; btn.disabled = false; btn.textContent = 'Create Account 🎉'; return; } }
+    S.users[user] = { name, username:user, email, _pass:hashPass(pass), xp:0, streak:0, progress:{}, badges:[], correct:0, lastLang:'python', lastStudiedDate:null };
     S.friendCodes = S.friendCodes || {};
     S.friendCodes[user] = genCode(user);
     isGuest = false;
