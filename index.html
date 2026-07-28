@@ -1666,7 +1666,7 @@ async function savePlayer(u) {
       updated_at: new Date().toISOString()
     };
     try {
-      await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: Object.assign({}, payload, { lang_xp: u.langXp || {}, email: u.email || null }) });
+      await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: Object.assign({}, payload, { lang_xp: u.langXp || {}, email: u.email || null, crowns: u.crowns || {} }) });
     } catch(_lx) {
       await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: payload });
     }
@@ -1692,6 +1692,41 @@ async function loadPlayerByEmail(email) {
     return rows && rows[0] ? rows[0] : null;
   } catch(e) { return null; }
 }
+async function syncMyAccount(){
+  if (isGuest || !SB_CONFIGURED || !S.currentUser) return;
+  let cloud; try { cloud = await loadPlayer(S.currentUser); } catch(e){ return; }
+  if (!cloud) return;
+  const u = getU(); if (!u) return;
+  u.xp = Math.max(u.xp||0, cloud.xp||0);
+  u.gems = Math.max(u.gems||0, cloud.gems||0);
+  u.streak = Math.max(u.streak||0, cloud.streak||0);
+  u.correct = Math.max(u.correct||0, cloud.correct||0);
+  const lp = u.progress||{}, cp = cloud.progress||{}, mp = {};
+  for (const k of new Set([...Object.keys(lp), ...Object.keys(cp)])) {
+    mp[k] = Array.from(new Set([].concat((lp[k]||[]).map(String), (cp[k]||[]).map(String))));
+  }
+  u.progress = mp;
+  const lc = u.crowns||{}, cc = cloud.crowns||{}, mc = {};
+  for (const k of new Set([...Object.keys(lc), ...Object.keys(cc)])) {
+    mc[k] = {};
+    for (const id of new Set([...Object.keys(lc[k]||{}), ...Object.keys(cc[k]||{})])) {
+      mc[k][id] = Math.max((lc[k]&&lc[k][id])||0, (cc[k]&&cc[k][id])||0);
+    }
+  }
+  u.crowns = mc;
+  const lx = u.langXp||{}, cx = cloud.lang_xp||{}, mx = {};
+  for (const k of new Set([...Object.keys(lx), ...Object.keys(cx)])) mx[k] = Math.max(lx[k]||0, cx[k]||0);
+  u.langXp = mx;
+  u.badges = Array.from(new Set([].concat(u.badges||[], cloud.badges||[])));
+  if (!u.email && cloud.email) u.email = cloud.email;
+  if (cloud.last_lang && !u.lastLang) u.lastLang = cloud.last_lang;
+  if (cloud.last_studied && (!u.lastStudiedDate || new Date(cloud.last_studied) > new Date(u.lastStudiedDate))) u.lastStudiedDate = cloud.last_studied;
+  if (cloud.boost && !u.boost) u.boost = cloud.boost;
+  save();
+  savePlayer(u);
+  updateAllNav();
+}
+
 
 // ── Fetch leaderboard from Supabase ──
 async function fetchLeaderboard() {
@@ -1949,6 +1984,7 @@ function enterApp() {
   document.getElementById('botNav').style.display = 'block';
   renderLangPicker();
   showOnly('lang');
+  syncMyAccount().then(() => { updateAllNav(); renderLangPicker(); });
   setTimeout(() => syncLeaderboard(), 500);
 }
 
