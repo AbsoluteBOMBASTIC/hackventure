@@ -1661,12 +1661,10 @@ async function savePlayer(u) {
       correct: u.correct || 0,
       last_lang: u.lastLang || 'python',
       last_studied: u.lastStudiedDate || null,
-      gems: u.gems || 0,
-      boost: u.boost || null,
       updated_at: new Date().toISOString()
     };
     try {
-      await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: Object.assign({}, payload, { lang_xp: u.langXp || {}, email: u.email || null, crowns: u.crowns || {} }) });
+      await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: Object.assign({}, payload, { gems: u.gems || 0, boost: u.boost || null, lang_xp: u.langXp || {}, email: u.email || null, crowns: u.crowns || {} }) });
     } catch(_lx) {
       await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: payload });
     }
@@ -1993,10 +1991,16 @@ function enterApp() {
 // ══════════════════════════════════════════════════
 
 const BOOSTERS = [
-  { id: 'x2_1h',  name: 'XP Doubler',   icon: '⚡', mult: 2, hours: 1,  cost: 40  },
-  { id: 'x3_1h',  name: 'XP Tripler',   icon: '🚀', mult: 3, hours: 1,  cost: 80  },
-  { id: 'x2_24h', name: 'Mega Doubler', icon: '🔋', mult: 2, hours: 2, cost: 150 },
-  { id: 'x3_24h', name: 'Mega Tripler', icon: '🌟', mult: 3, hours: 2, cost: 300 },
+  { id: 'x2_5m',  name: 'Super Mini Doubler', icon: '✨', mult: 2, mins: 5,   cost: 5   },
+  { id: 'x3_5m',  name: 'Super Mini Tripler', icon: '🌠', mult: 3, mins: 5,   cost: 10  },
+  { id: 'x2_10m', name: 'Mini Doubler',       icon: '💫', mult: 2, mins: 10,  cost: 10  },
+  { id: 'x3_10m', name: 'Mini Tripler',       icon: '💥', mult: 3, mins: 10,  cost: 20  },
+  { id: 'x2_30m', name: 'Medium Doubler',     icon: '🔆', mult: 2, mins: 30,  cost: 25  },
+  { id: 'x3_30m', name: 'Medium Tripler',     icon: '🔥', mult: 3, mins: 30,  cost: 50  },
+  { id: 'x2_1h',  name: 'XP Doubler',         icon: '⚡', mult: 2, mins: 60,  cost: 40  },
+  { id: 'x3_1h',  name: 'XP Tripler',         icon: '🚀', mult: 3, mins: 60,  cost: 80  },
+  { id: 'x2_24h', name: 'Mega Doubler',       icon: '🔋', mult: 2, mins: 120, cost: 150 },
+  { id: 'x3_24h', name: 'Mega Tripler',       icon: '🌟', mult: 3, mins: 120, cost: 300 },
 ];
 
 const GEM_PACKS = [
@@ -2023,6 +2027,12 @@ function fmtTimeLeft(ms) {
   return h + 'h ' + (m > 0 ? m + 'min' : '');
 }
 
+function fmtDur(mins) {
+  if (mins < 60) return mins + ' min';
+  const h = mins / 60;
+  return h + ' hour' + (h > 1 ? 's' : '');
+}
+
 function buyBooster(id) {
   const u = getU();
   const item = BOOSTERS.find(b => b.id === id);
@@ -2030,10 +2040,10 @@ function buyBooster(id) {
   if (getBoost(u)) { toast('⏳ A boost is already active — wait for it to finish!'); return; }
   if ((u.gems || 0) < item.cost) { toast('💎 Not enough gems — complete lessons to earn more!'); return; }
   u.gems -= item.cost;
-  u.boost = { mult: item.mult, expiresAt: Date.now() + item.hours * 3600000 };
+  u.boost = { mult: item.mult, expiresAt: Date.now() + item.mins * 60000 };
   save();
   if (!isGuest) savePlayer(u);
-  toast(item.icon + ' ' + item.name + ' activated — ' + item.mult + '× XP for ' + item.hours + 'h!');
+  toast(item.icon + ' ' + item.name + ' activated — ' + item.mult + '× XP for ' + fmtDur(item.mins) + '!');
   renderShop();
   updateAllNav();
 }
@@ -2054,7 +2064,7 @@ function renderShop() {
       <div style="font-size:1.8rem">${b.icon}</div>
       <div style="flex:1">
         <div style="font-weight:800">${b.name}</div>
-        <div style="font-size:0.8rem;color:var(--muted,#8888a0)">${b.mult}× XP for ${b.hours} hour${b.hours>1?'s':''}</div>
+        <div style="font-size:0.8rem;color:var(--muted,#8888a0)">${b.mult}× XP for ${fmtDur(b.mins)}</div>
       </div>
       <button onclick="buyBooster('${b.id}')" style="border:none;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer;background:${affordable ? 'linear-gradient(135deg,#6366f1,#8b5cf6)' : '#2a2a35'};color:${affordable ? '#fff' : '#666'}">💎 ${b.cost}</button>
     </div>`;
