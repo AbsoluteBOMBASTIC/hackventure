@@ -2643,10 +2643,11 @@ function handle(ok, okMsg, badMsg) {
   if (ok) {
     session.correct++;
     ensureLangXp(u);
-    u.xp += 20; u.correct = (u.correct||0)+1;
-    if(activeLang) u.langXp[activeLang] = (u.langXp[activeLang]||0) + 20;
+    const qXp = 20 * getMult(u);
+    u.xp += qXp; u.correct = (u.correct||0)+1;
+    if(activeLang) u.langXp[activeLang] = (u.langXp[activeLang]||0) + qXp;
     save(); updateAllNav();
-    xpPop('+20 XP ⭐');
+    xpPop('+' + qXp + ' XP ⭐');
     showFB(true, '🎉 Correct!', okMsg);
   } else {
     session.hearts = Math.max(0, session.hearts-1);
