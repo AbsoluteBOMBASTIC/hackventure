@@ -621,11 +621,17 @@ input{font-family:inherit;outline:none;border:none}
     <div id="shopWrap" style="padding:16px 16px 100px;max-width:520px;margin:0 auto"></div>
   </div>
 
+  <!-- ═══ BUILD SCREEN ═══ -->
+  <div id="buildScreen" class="screen">
+    <div id="buildWrap" style="padding:16px 16px 100px;max-width:560px;margin:0 auto"></div>
+  </div>
+
   <!-- BOTTOM NAV -->
   <div id="botNav" style="display:none">
     <div class="bn-row">
       <button class="bn-btn active" id="bnLearn" onclick="goHome()"><div class="bn-icon">🗺️</div>Learn</button>
       <button class="bn-btn" id="bnLang" onclick="goLang()"><div class="bn-icon">🌍</div>Languages</button>
+      <button class="bn-btn" id="bnBuild" onclick="goBuild()"><div class="bn-icon">🔨</div>Build</button>
       <button class="bn-btn" id="bnLead" onclick="goLeader()"><div class="bn-icon">🏆</div>Ranks</button>
       <button class="bn-btn" id="bnShop" onclick="goShop()"><div class="bn-icon">🛒</div>Shop</button>
       <button class="bn-btn" id="bnProf" onclick="goProfile()"><div class="bn-icon">👤</div>Profile</button>
@@ -2099,6 +2105,189 @@ function renderShop() {
 function goShop() { renderShop(); showOnly('shop'); }
 
 // ══════════════════════════════════════════════════
+// BUILD HUB v2 — runs the learner's ACTUAL language via the Worker's Piston runner,
+// challenges gated by course progress, checked by program output.
+// ══════════════════════════════════════════════════
+const BH_WORKER = 'https://hackventure-ai.iaroshik.workers.dev/';
+
+const BH_LANGS = {
+  python:     { piston:'python',   ver:'3.10.0',  hello:'print("Hello from Python!")', skel:'# write your code here\n' },
+  lua:        { piston:'lua',      ver:'5.4.4',   hello:'print("Hello from Lua!")', skel:'-- write your code here\n' },
+  javascript: { piston:'javascript',ver:'18.15.0',hello:'console.log("Hello from JavaScript!");', skel:'// write your code here\n' },
+  typescript: { piston:'typescript',ver:'5.0.3',  hello:'const msg: string = "Hello from TypeScript!";\nconsole.log(msg);', skel:'// write your code here\n' },
+  java:       { piston:'java',     ver:'15.0.2',  hello:'public class Main {\n  public static void main(String[] args) {\n    System.out.println("Hello from Java!");\n  }\n}', skel:'public class Main {\n  public static void main(String[] args) {\n    // write your code here\n    \n  }\n}' },
+  cpp:        { piston:'c++',      ver:'10.2.0',  hello:'#include <iostream>\nusing namespace std;\nint main() {\n  cout << "Hello from C++!" << endl;\n}', skel:'#include <iostream>\nusing namespace std;\nint main() {\n  // write your code here\n  \n}' },
+  csharp:     { piston:'csharp',   ver:'6.12.0',  hello:'using System;\nclass Program {\n  static void Main() {\n    Console.WriteLine("Hello from C#!");\n  }\n}', skel:'using System;\nclass Program {\n  static void Main() {\n    // write your code here\n    \n  }\n}' },
+  rust:       { piston:'rust',     ver:'1.68.2',  hello:'fn main() {\n    println!("Hello from Rust!");\n}', skel:'fn main() {\n    // write your code here\n    \n}' },
+  swift:      { piston:'swift',    ver:'5.3.3',   hello:'print("Hello from Swift!")', skel:'// write your code here\n' },
+  sql:        { piston:'sqlite3',  ver:'3.36.0',  hello:'SELECT \'Hello from SQL!\';', skel:'-- write your query here\n' },
+  html:       { runnable:false, mode:'html' },
+  scratch:    { runnable:false, mode:'blocks' },
+};
+
+// output-based challenges (work in EVERY language) — req = lessons completed in the current language to unlock
+const BH_CHALLENGES = [
+  { id:'hello', req:0,  xp:20, gems:2, title:'Say hello',      instr:'Make your program print exactly:', want:'Hello, world!' },
+  { id:'num',   req:2,  xp:20, gems:2, title:'Print a number', instr:'Print the number:', want:'42' },
+  { id:'math',  req:5,  xp:30, gems:3, title:'Do some math',   instr:'Print the answer to 7 + 8 (just the number):', want:'15' },
+  { id:'words', req:9,  xp:30, gems:3, title:'Print a sentence',instr:'Print exactly:', want:'I love coding!' },
+  { id:'count', req:14, xp:45, gems:4, title:'Count to five',  instr:'Print the numbers 1 to 5, each on its own line:', want:'1\n2\n3\n4\n5' },
+  { id:'evens', req:20, xp:55, gems:5, title:'Even numbers',   instr:'Print the even numbers from 2 to 10, each on its own line:', want:'2\n4\n6\n8\n10' },
+];
+
+const BH_PROJECTS = [
+  { id:'countdown', req:12, xp:70, gems:7, emoji:'🚀', title:'Countdown to Blast-off', intro:'Build a rocket countdown, one line at a time.',
+    steps:[
+      { instr:'Print 3, 2, 1 — each on its own line:', want:'3\n2\n1' },
+      { instr:'Now print the countdown AND add a final line "Blast off!":', want:'3\n2\n1\nBlast off!' },
+    ] },
+  { id:'table', req:18, xp:80, gems:8, emoji:'✖️', title:'Times-Table Machine', intro:'Print a multiplication table.',
+    steps:[
+      { instr:'Print the 2 times table up to 2×5 (2, 4, 6, 8, 10), each on its own line:', want:'2\n4\n6\n8\n10' },
+      { instr:'Now print the 3 times table up to 3×5 (3, 6, 9, 12, 15), each on its own line:', want:'3\n6\n9\n12\n15' },
+    ] },
+];
+
+function bhNorm(s){
+  return String(s==null?'':s).replace(/\r\n/g,'\n').split('\n').map(function(l){return l.replace(/\s+$/,'');}).join('\n').replace(/^\n+/,'').replace(/\n+$/,'');
+}
+function bhDoneCount(){ var u=getU(); return (u && u.progress && u.progress[activeLang] ? u.progress[activeLang].length : 0); }
+function bhUser(){ var u=getU(); if(u){ u.buildDone = u.buildDone || {}; } return u; }
+function bhLang(){ return BH_LANGS[activeLang] || null; }
+
+async function bhRun(code, stdin){
+  var L = bhLang();
+  if(!L || !L.piston) return {ok:false, error:'This language cannot run here.'};
+  try{
+    var res = await fetch(BH_WORKER, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ kind:'run', language:L.piston, version:L.ver, code:code, stdin:stdin||'' }) });
+    var d = await res.json();
+    if(d && d.error) return {ok:false, error:d.error + (d.details? ' — '+d.details : '')};
+    var compileErr = (d.compile_output||'').trim();
+    return {ok:true, stdout:d.stdout||'', stderr:(d.stderr||'').trim(), compile:compileErr, output:d.output||''};
+  }catch(e){ return {ok:false, error:'Could not reach the runner — check your internet, or the site must be opened on hackventure.dev.'}; }
+}
+
+var bhTab='play', bhProjOpen=null;
+function goBuild(){ renderBuild(); showOnly('build'); }
+function bhSetTab(t){ bhTab=t; bhProjOpen=null; renderBuild(); }
+
+function renderBuild(){
+  var L = bhLang();
+  var langLabel = (COURSE[activeLang] && COURSE[activeLang].name) || (activeLang||'');
+  var head = '<div style="text-align:center;margin:8px 0 14px"><div style="font-size:2.2rem">🔨</div><div style="font-size:1.4rem;font-weight:900">Build</div><div style="font-size:0.8rem;color:var(--muted,#8888a0);margin-top:6px">Write &amp; run real <b>'+esc(activeLang||'')+'</b> code.</div></div>';
+  var body;
+  if(!L){ body = bhMsg('Pick a language first (Languages tab) to start building.'); }
+  else if(L.runnable===false && L.mode==='blocks'){ body = bhMsg('🧩 Scratch uses drag-and-drop blocks, so there\'s no code to type here. Switch to a text language like Python or JavaScript to use Build!'); }
+  else if(L.runnable===false && L.mode==='html'){ body = bhHtmlPlayground(); }
+  else {
+    var tb=function(id,label){ return '<button onclick="bhSetTab(\''+id+'\')" style="flex:1;border:none;border-radius:12px;padding:10px;font-weight:800;cursor:pointer;background:'+(bhTab===id?'linear-gradient(135deg,#6366f1,#8b5cf6)':'var(--surface2,#22222e)')+';color:'+(bhTab===id?'#fff':'var(--muted,#8888a0)')+'">'+label+'</button>'; };
+    var tabs='<div style="display:flex;gap:8px;margin-bottom:16px">'+tb('play','▶️ Play')+tb('chal','🎯 Challenges')+tb('proj','🏗️ Projects')+'</div>';
+    body = tabs + (bhTab==='play'?bhPlayground():bhTab==='chal'?bhChallenges():bhProjects());
+  }
+  document.getElementById('buildWrap').innerHTML = head + body;
+}
+function bhMsg(t){ return '<div style="background:var(--card,#16161f);border:1px solid var(--border,#2a2a35);border-radius:16px;padding:20px;text-align:center;color:var(--muted,#b0b0c0);font-size:0.9rem;line-height:1.5">'+t+'</div>'; }
+function bhEditor(id, code){ return '<textarea id="'+id+'" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" style="width:100%;min-height:150px;box-sizing:border-box;background:#0d0d13;color:#e6e6f0;border:1px solid var(--border,#2a2a35);border-radius:12px;padding:12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.85rem;line-height:1.5;resize:vertical">'+esc(code)+'</textarea>'; }
+function bhOut(id){ return '<div id="'+id+'" style="margin-top:10px;background:#0d0d13;border:1px solid var(--border,#2a2a35);border-radius:12px;padding:12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:0.82rem;white-space:pre-wrap;color:#9aa;min-height:20px">Output will appear here…</div>'; }
+function bhRunBtn(onclick,label){ return '<button onclick="'+onclick+'" style="width:100%;border:none;border-radius:12px;padding:12px;margin-top:10px;font-weight:800;cursor:pointer;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff">'+label+'</button>'; }
+
+function bhPlayground(){
+  var L=bhLang();
+  return '<div style="background:var(--card,#16161f);border:1px solid var(--border,#2a2a35);border-radius:16px;padding:14px">'
+    + bhEditor('bhPlay', L.hello) + bhRunBtn('bhRunPlay()','▶️ Run') + bhOut('bhPlayOut') + '</div>';
+}
+async function bhRunPlay(){
+  var out=document.getElementById('bhPlayOut'); out.style.color='#9aa'; out.textContent='⏳ Running…';
+  var r=await bhRun(document.getElementById('bhPlay').value,'');
+  if(!r.ok){ out.style.color='#f87171'; out.textContent='❌ '+r.error; return; }
+  var parts=[]; if(r.compile) parts.push('⚙️ '+r.compile); if(r.stdout) parts.push(r.stdout.replace(/\n+$/,'')); if(r.stderr) parts.push('⚠️ '+r.stderr);
+  out.style.color = r.stderr||r.compile ? '#fbbf24' : '#8ef0a8';
+  out.textContent = parts.length ? parts.join('\n') : '✅ Ran with no output.';
+}
+
+// HTML: live preview instead of a runner
+function bhHtmlPlayground(){
+  return '<div style="background:var(--card,#16161f);border:1px solid var(--border,#2a2a35);border-radius:16px;padding:14px">'
+    + '<div style="font-size:0.8rem;color:var(--muted,#8888a0);margin-bottom:8px">Write HTML, hit Preview, and see your page appear below. 🌐</div>'
+    + bhEditor('bhHtml', '<h1>Hello!</h1>\n<p>I am building a <b>web page</b>.</p>') + bhRunBtn('bhRunHtml()','👁️ Preview')
+    + '<iframe id="bhHtmlOut" style="width:100%;height:220px;margin-top:10px;background:#fff;border:1px solid var(--border,#2a2a35);border-radius:12px"></iframe></div>';
+}
+function bhRunHtml(){ document.getElementById('bhHtmlOut').srcdoc = document.getElementById('bhHtml').value; }
+
+function bhLockNote(req){ var d=bhDoneCount(); return '🔒 Complete <b>'+req+'</b> '+esc(activeLang)+' lessons to unlock (you\'ve done '+d+').'; }
+
+function bhChallenges(){
+  var u=bhUser(), done=bhDoneCount();
+  return BH_CHALLENGES.map(function(c){
+    var unlocked = done>=c.req, cleared = u && u.buildDone['bc_'+activeLang+'_'+c.id];
+    if(!unlocked){
+      return '<div style="background:var(--card,#16161f);border:1px solid var(--border,#2a2a35);border-radius:16px;padding:14px;margin-bottom:12px;opacity:0.7"><div style="font-weight:800">🔒 '+esc(c.title)+'</div><div style="font-size:0.8rem;color:var(--muted,#8888a0);margin-top:6px">'+bhLockNote(c.req)+'</div></div>';
+    }
+    return '<div style="background:var(--card,#16161f);border:1px solid '+(cleared?'#f59e0b':'var(--border,#2a2a35)')+';border-radius:16px;padding:14px;margin-bottom:12px">'
+      + '<div style="display:flex;align-items:center;gap:8px"><div style="font-weight:800;flex:1">'+(cleared?'👑 ':'🎯 ')+esc(c.title)+'</div><div style="font-size:0.76rem;color:var(--muted,#8888a0);white-space:nowrap">+'+c.xp+' XP · +'+c.gems+' 💎</div></div>'
+      + '<div style="font-size:0.85rem;color:var(--muted,#b0b0c0);margin:8px 0">'+esc(c.instr)+'<div style="margin-top:6px;color:#8ef0a8;font-family:ui-monospace,monospace;white-space:pre-wrap;background:#0d0d13;border-radius:8px;padding:8px">'+esc(c.want)+'</div></div>'
+      + bhEditor('bhc_'+c.id, bhLang().skel) + bhRunBtn("bhRunChal('"+c.id+"')",'✅ Run &amp; check') + bhOut('bho_'+c.id) + '</div>';
+  }).join('');
+}
+async function bhRunChal(id){
+  var c=BH_CHALLENGES.find(function(x){return x.id===id;});
+  var out=document.getElementById('bho_'+id); out.style.color='#9aa'; out.textContent='⏳ Running…';
+  var r=await bhRun(document.getElementById('bhc_'+id).value,'');
+  bhCheck(out, r, c.want, 'bc_'+activeLang+'_'+c.id, c.xp, c.gems);
+}
+function bhCheck(out, r, want, doneKey, xp, gems){
+  if(!r.ok){ out.style.color='#f87171'; out.textContent='❌ '+r.error; return false; }
+  if(r.compile){ out.style.color='#f87171'; out.textContent='⚙️ Build error:\n'+r.compile; return false; }
+  var got=r.stdout;
+  var pass = bhNorm(got)===bhNorm(want);
+  if(pass){
+    var u=bhUser(); var first = u && !u.buildDone[doneKey];
+    if(first){ var m=getMult(u); var g=xp*m; u.buildDone[doneKey]=1; u.xp=(u.xp||0)+g; u.gems=(u.gems||0)+gems; if(activeLang){ ensureLangXp(u); u.langXp[activeLang]=(u.langXp[activeLang]||0)+g; } save(); if(!isGuest) savePlayer(u); updateAllNav(); }
+    out.style.color='#8ef0a8';
+    out.textContent='Your output:\n'+(got.replace(/\n+$/,'')||'(nothing)')+'\n\n🎉 Correct!'+(first?'  +'+(xp*getMult(u))+' XP · +'+gems+' 💎'+(getMult(u)>1?' (boost!)':''):'  (already earned)');
+    return true;
+  }
+  out.style.color='#fbbf24';
+  out.textContent='Your output:\n'+(got.replace(/\n+$/,'')||'(nothing)')+(r.stderr?'\n⚠️ '+r.stderr:'')+'\n\nExpected:\n'+want+'\n\nNot matching yet — keep trying!';
+  return false;
+}
+
+function bhProjects(){
+  if(bhProjOpen) return bhProjectDetail(bhProjOpen);
+  var u=bhUser(), done=bhDoneCount();
+  return BH_PROJECTS.map(function(p){
+    var unlocked=done>=p.req;
+    var ds=p.steps.filter(function(s,ix){return u && u.buildDone['bp_'+activeLang+'_'+p.id+'_'+ix];}).length;
+    var complete=ds===p.steps.length;
+    if(!unlocked) return '<div style="background:var(--card,#16161f);border:1px solid var(--border,#2a2a35);border-radius:16px;padding:16px;margin-bottom:12px;opacity:0.7"><div style="font-weight:800">🔒 '+p.emoji+' '+esc(p.title)+'</div><div style="font-size:0.8rem;color:var(--muted,#8888a0);margin-top:6px">'+bhLockNote(p.req)+'</div></div>';
+    return '<div onclick="bhOpenProj(\''+p.id+'\')" style="cursor:pointer;background:var(--card,#16161f);border:1px solid '+(complete?'#f59e0b':'var(--border,#2a2a35)')+';border-radius:16px;padding:16px;margin-bottom:12px"><div style="display:flex;align-items:center;gap:12px"><div style="font-size:1.8rem">'+p.emoji+'</div><div style="flex:1"><div style="font-weight:800">'+(complete?'👑 ':'')+esc(p.title)+'</div><div style="font-size:0.8rem;color:var(--muted,#8888a0)">'+esc(p.intro)+'</div></div><div style="font-size:0.8rem;color:var(--muted,#8888a0);white-space:nowrap">'+ds+'/'+p.steps.length+' ✓</div></div></div>';
+  }).join('');
+}
+function bhOpenProj(id){ bhProjOpen=id; renderBuild(); }
+function bhProjectDetail(id){
+  var p=BH_PROJECTS.find(function(x){return x.id===id;}), u=bhUser();
+  var h='<button onclick="bhProjOpen=null;renderBuild()" style="border:none;background:none;color:var(--accent,#8b5cf6);font-weight:800;cursor:pointer;margin-bottom:10px">← All projects</button>';
+  h+='<div style="font-size:1.2rem;font-weight:900;margin-bottom:4px">'+p.emoji+' '+esc(p.title)+'</div><div style="font-size:0.85rem;color:var(--muted,#8888a0);margin-bottom:14px">'+esc(p.intro)+'</div>';
+  p.steps.forEach(function(s,ix){
+    var done=u && u.buildDone['bp_'+activeLang+'_'+p.id+'_'+ix];
+    h+='<div style="background:var(--card,#16161f);border:1px solid '+(done?'#f59e0b':'var(--border,#2a2a35)')+';border-radius:16px;padding:14px;margin-bottom:12px">'
+      + '<div style="font-size:0.85rem;color:var(--muted,#b0b0c0);margin-bottom:6px">'+(done?'✅ ':'')+esc(s.instr)+'<div style="margin-top:6px;color:#8ef0a8;font-family:ui-monospace,monospace;white-space:pre-wrap;background:#0d0d13;border-radius:8px;padding:8px">'+esc(s.want)+'</div></div>'
+      + bhEditor('bhp_'+p.id+'_'+ix, bhLang().skel) + bhRunBtn("bhRunProj('"+p.id+"',"+ix+")",'✅ Run &amp; check') + bhOut('bhpo_'+p.id+'_'+ix) + '</div>';
+  });
+  return h;
+}
+async function bhRunProj(pid, ix){
+  var p=BH_PROJECTS.find(function(x){return x.id===pid;}), s=p.steps[ix];
+  var out=document.getElementById('bhpo_'+pid+'_'+ix); out.style.color='#9aa'; out.textContent='⏳ Running…';
+  var per=Math.round(p.xp/p.steps.length), perG=Math.max(1,Math.round(p.gems/p.steps.length));
+  var r=await bhRun(document.getElementById('bhp_'+pid+'_'+ix).value,'');
+  var ok=bhCheck(out, r, s.want, 'bp_'+activeLang+'_'+pid+'_'+ix, per, perG);
+  if(ok){ var u=bhUser(); if(p.steps.every(function(_,j){return u.buildDone['bp_'+activeLang+'_'+pid+'_'+j];})){ toast('🏆 Project complete: '+p.title+'!'); setTimeout(renderBuild,900); } }
+}
+
+
+// ══════════════════════════════════════════════════
 // SCREEN ROUTING
 // ══════════════════════════════════════════════════
 
@@ -2111,6 +2300,7 @@ function showOnly(name) {
   if (name==='leader') { document.getElementById('bnLead').classList.add('active'); }
   if (name==='profile') { document.getElementById('bnProf').classList.add('active'); }
   if (name==='shop') { document.getElementById('bnShop').classList.add('active'); }
+  if (name==='build') { document.getElementById('bnBuild').classList.add('active'); }
 }
 
 function goHome() { renderHome(); showOnly('home'); }
