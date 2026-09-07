@@ -23,10 +23,20 @@ Write real code in whatever language you're learning and actually run it — not
 
 A challenge passes when your output matches the target. Trailing spaces and blank lines at the top and bottom are ignored, so formatting nits don't fail you.
 
-**Runs here:** Python, Lua, JavaScript, TypeScript, Java, C++, C#, Rust, Swift, SQL.
-**Doesn't:** Scratch (drag-and-drop blocks, no code to type) and HTML.
+**Runs in your browser** — no server, no limits, works offline: Python (via Pyodide),
+JavaScript, TypeScript (compiled, then run as JS) and SQL (via SQLite compiled to WebAssembly).
+The first Python run downloads about 10 MB, once.
 
-Limits: 20,000 characters of code and 5 seconds of run time per go.
+**Needs the shared runner** — currently offline, see below: Lua, Java, C++, C#, Rust, Swift.
+
+**Doesn't run at all:** Scratch (drag-and-drop blocks, no code to type) and HTML (previewed instead).
+
+Programs are stopped after 5 seconds (15 for Python) so an endless loop can't freeze the page.
+
+> **Note:** the public Piston API went whitelist-only on 15 Feb 2026, so the shared
+> runner returns 401. That's why the four most popular languages moved into the
+> browser. When a runner is unavailable the Build tab says so plainly — it never
+> shows a correct answer as wrong.
 
 ## Architecture
 
