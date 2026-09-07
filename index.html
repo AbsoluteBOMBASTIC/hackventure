@@ -1686,19 +1686,21 @@ async function savePlayer(u) {
 }
 
 // ── Load player from Supabase by username ──
+// These THROW when the server cannot be reached, and return null only when
+// the lookup really came back empty. That difference matters: swallowing the
+// error made "the backend is down" and "no such account" identical to every
+// caller, which is how a dead Supabase project showed up to players as
+// "No account found - sign up first!" on accounts that existed.
+// Every caller must therefore wrap these in try/catch.
 async function loadPlayer(username) {
   if (!SB_CONFIGURED) return null;
-  try {
-    const rows = await sbFetch('players?username=eq.' + encodeURIComponent(username) + '&limit=1');
-    return rows && rows[0] ? rows[0] : null;
-  } catch(e) { return null; }
+  const rows = await sbFetch('players?username=eq.' + encodeURIComponent(username) + '&limit=1');
+  return rows && rows[0] ? rows[0] : null;
 }
 async function loadPlayerByEmail(email) {
   if (!SB_CONFIGURED) return null;
-  try {
-    const rows = await sbFetch('players?email=eq.' + encodeURIComponent(email) + '&limit=1');
-    return rows && rows[0] ? rows[0] : null;
-  } catch(e) { return null; }
+  const rows = await sbFetch('players?email=eq.' + encodeURIComponent(email) + '&limit=1');
+  return rows && rows[0] ? rows[0] : null;
 }
 async function syncMyAccount(){
   if (isGuest || !SB_CONFIGURED || !S.currentUser) return;
@@ -1764,7 +1766,11 @@ async function syncLeaderboard() {
       for (const r of rows) {
         const k = r.username;
         if (!S.users[k]) {
-          S.users[k] = { name: r.name, xp: r.xp || 0, streak: r.streak || 0, progress: r.progress || {}, badges: r.badges || [], correct: 0, langXp: r.lang_xp || {} };
+          // _stub marks a record built only from public leaderboard columns.
+          // It carries no password hash, so doLogin() must never accept it as
+          // an account - otherwise anyone who opened the leaderboard could
+          // sign in as any player on it using any password at all.
+          S.users[k] = { _stub: true, name: r.name, xp: r.xp || 0, streak: r.streak || 0, progress: r.progress || {}, badges: r.badges || [], correct: 0, langXp: r.lang_xp || {} };
         } else {
           // Update with fresher cloud data
           S.users[k].xp = Math.max(S.users[k].xp || 0, r.xp || 0);
@@ -1839,10 +1845,17 @@ async function findAccount(idRaw) {
     const row = await loadPlayerByEmail(id);
     return (row && row.username) ? { username: String(row.username).toLowerCase(), acct: rowToUser(row) } : null;
   }
-  if (S.users[id]) return { username: id, acct: S.users[id] };
-  if (!SB_CONFIGURED) return null;
-  const row = await loadPlayer(id);
-  return row ? { username: id, acct: rowToUser(row) } : null;
+  const localAcct = S.users[id];
+  const usableLocal = !!localAcct && !localAcct._stub;
+  // A leaderboard stub has no email and no password, so it can't prove
+  // ownership. Go to the cloud for the full record whenever the local copy
+  // is a stub or is missing the email the reset check needs.
+  if (usableLocal && localAcct.email) return { username: id, acct: localAcct };
+  if (SB_CONFIGURED) {
+    const row = await loadPlayer(id);
+    if (row) return { username: id, acct: rowToUser(row) };
+  }
+  return usableLocal ? { username: id, acct: localAcct } : null;
 }
 
 // The account currently being reset (set by showResetForm, read by doReset).
@@ -1951,8 +1964,13 @@ async function doReset() {
   }
 
   // Cloud is updated, so it is safe to mirror it on this device.
-  const local = S.users[target.username] || target.acct;
-  local._pass = hash;
+  // Merge onto the record findAccount() resolved rather than whatever this
+  // device happens to hold: if the local copy is a leaderboard stub, keeping
+  // it would leave an account doLogin() refuses on purpose.
+  const held = S.users[target.username];
+  const base = (held && !held._stub) ? held : target.acct;
+  const local = Object.assign({}, base, { _pass: hash });
+  delete local._stub;
   S.users[target.username] = local;
   save();
 
@@ -1976,17 +1994,39 @@ async function doLogin() {
     const btn = document.getElementById('loginBtn');
     btn.disabled = true; btn.textContent = 'Signing in...';
 
+    // Every cloud lookup below can fail. When it does, say so - turning a
+    // network problem into "your account does not exist" sends players off to
+    // create a duplicate account instead of waiting a minute and retrying.
+    const offline = (e) => {
+      btn.disabled = false; btn.textContent = 'Sign In →';
+      showSyncStatus('err', '⚠️ Server unreachable');
+      err.style.color = 'var(--red)';
+      err.textContent = "Can't reach the server right now — check your connection and try again.";
+      console.error('Sign-in lookup failed:', e && e.message);
+    };
+
     // If they typed an email, find the matching username (local, then cloud)
     if (user.includes('@')) {
       let found = Object.keys(S.users).find(k => S.users[k].email && S.users[k].email.toLowerCase() === user);
-      if (!found && SB_CONFIGURED) { const byEmail = await loadPlayerByEmail(user); if (byEmail && byEmail.username) found = byEmail.username; }
+      if (!found && SB_CONFIGURED) {
+        let byEmail;
+        try { byEmail = await loadPlayerByEmail(user); }
+        catch (e) { offline(e); return; }
+        if (byEmail && byEmail.username) found = String(byEmail.username).toLowerCase();
+      }
       if (found) user = found;
     }
 
-    // Try cloud first if configured and user not found locally
-    if (!S.users[user] && SB_CONFIGURED) {
+    // A local record only proves an account exists if it carries a password
+    // hash. syncLeaderboard() merges every player it displays into S.users as
+    // a name-only stub, so stubs - and anything else missing a hash - get
+    // confirmed against the cloud rather than trusted.
+    const held = S.users[user];
+    if ((!held || held._stub || !held._pass) && SB_CONFIGURED) {
       showSyncStatus('syncing', '☁️ Checking account...');
-      const cloud = await loadPlayer(user);
+      let cloud;
+      try { cloud = await loadPlayer(user); }
+      catch (e) { offline(e); return; }
       if (cloud) {
         S.users[user] = rowToUser(cloud);
         // Friend code is derived from the username, so it rebuilds identically
@@ -2003,8 +2043,12 @@ async function doLogin() {
 
     btn.disabled = false; btn.textContent = 'Sign In →';
 
-    if (!S.users[user]) { err.textContent = 'No account found — sign up first!'; return; }
-    if (S.users[user]._pass && S.users[user]._pass !== hashPass(pass)) { err.textContent = 'Wrong password'; return; }
+    const acct = S.users[user];
+    if (!acct || acct._stub) { err.textContent = 'No account found — sign up first!'; return; }
+    // Never sign in without checking a hash. The old code skipped the check
+    // whenever _pass was missing, which let any password through.
+    if (!acct._pass) { err.textContent = 'This account has no password saved yet — use "Forgot password?" to set one.'; return; }
+    if (acct._pass !== hashPass(pass)) { err.textContent = 'Wrong password'; return; }
 
     isGuest = false;
     S.currentUser = user;
@@ -2036,12 +2080,24 @@ async function doSignup() {
     const btn = document.getElementById('signupBtn');
     btn.disabled = true; btn.textContent = 'Creating...';
     if (SB_CONFIGURED) {
-      const dup = await loadPlayerByEmail(email);
+      let dup, takenInCloud;
+      try {
+        dup = await loadPlayerByEmail(email);
+        // The username check has to hit the cloud too. Checking only this device
+        // let two people on two devices claim the same name and then overwrite
+        // each other's progress in the shared players table.
+        takenInCloud = await loadPlayer(user);
+      } catch (e) {
+        // Creating it locally anyway would hand back an account that lives in
+        // this one browser and nowhere else - it disappears the moment they
+        // open the site on another device or domain. Stop instead.
+        err.style.color = 'var(--red)';
+        err.textContent = "Can't reach the server right now — try again in a minute.";
+        btn.disabled = false; btn.textContent = 'Create Account 🎉';
+        console.error('Sign-up lookup failed:', e && e.message);
+        return;
+      }
       if (dup) { err.style.color = 'var(--red)'; err.textContent = 'That email is already registered'; btn.disabled = false; btn.textContent = 'Create Account 🎉'; return; }
-      // The username check has to hit the cloud too. Checking only this device
-      // let two people on two devices claim the same name and then overwrite
-      // each other's progress in the shared players table.
-      const takenInCloud = await loadPlayer(user);
       if (takenInCloud) { err.style.color = 'var(--red)'; err.textContent = 'Username taken — choose another'; btn.disabled = false; btn.textContent = 'Create Account 🎉'; return; }
     }
     S.users[user] = { name, username:user, email, _pass:hashPass(pass), xp:0, streak:0, progress:{}, badges:[], correct:0, lastLang:'python', lastStudiedDate:null };
@@ -3197,7 +3253,12 @@ async function saveAddEmail(){
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ err.textContent = 'Enter a valid email address'; return; }
   if(Object.entries(S.users).some(([k,x]) => k !== S.currentUser && x.email && x.email.toLowerCase() === email)){ err.textContent = 'That email is already used'; return; }
   const btn = document.getElementById('addEmailBtn'); btn.disabled = true; btn.textContent = 'Saving...';
-  if(SB_CONFIGURED){ const dup = await loadPlayerByEmail(email); if(dup && dup.username !== S.currentUser){ err.textContent = 'That email is already registered'; btn.disabled = false; btn.textContent = 'Save email'; return; } }
+  if(SB_CONFIGURED){
+    let dup;
+    try { dup = await loadPlayerByEmail(email); }
+    catch(e){ err.textContent = "Can't reach the server right now — try again in a minute."; btn.disabled = false; btn.textContent = 'Save email'; return; }
+    if(dup && dup.username !== S.currentUser){ err.textContent = 'That email is already registered'; btn.disabled = false; btn.textContent = 'Save email'; return; }
+  }
   u.email = email; save(); if(!isGuest) savePlayer(u);
   btn.disabled = false; btn.textContent = 'Save email';
   closeAddEmail(); maybeShowEmailBanner();
