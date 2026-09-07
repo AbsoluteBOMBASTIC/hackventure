@@ -2354,17 +2354,270 @@ function bhDoneCount(){ var u=getU(); return (u && u.progress && u.progress[acti
 function bhUser(){ var u=getU(); if(u){ u.buildDone = u.buildDone || {}; } return u; }
 function bhLang(){ return BH_LANGS[activeLang] || null; }
 
-async function bhRun(code, stdin){
+// ══════════════════════════════════════════════════
+// RUNNERS
+// The public Piston API went whitelist-only on 15 Feb 2026, so the shared
+// runner returns 401. Python, JavaScript, TypeScript and SQL now run right
+// here in the browser instead: no server, no quota, nothing to pay for, and
+// they keep working offline. The compiled languages still need the Worker.
+//
+// Every runner returns the same shape:
+//   {ok:true,  stdout, stderr, compile}  -> the program ran (badly or well)
+//   {ok:false, down:true, error}         -> it never ran; NOT the user's fault
+// bhCheck() leans on that difference so a broken runner can never be shown
+// as a wrong answer.
+// ══════════════════════════════════════════════════
+var PYODIDE_BASE = 'https://cdn.jsdelivr.net/pyodide/v314.0.6/full/';
+var TS_URL       = 'https://cdn.jsdelivr.net/npm/typescript@5/lib/typescript.js';
+var SQLJS_BASE   = 'https://cdn.jsdelivr.net/npm/sql.js@1.14.2/dist/';
+
+// Worker bodies are written as real functions and stringified, so there are no
+// escaped-quote nightmares. They never run on this thread.
+function bhPyWorkerBody(){
+  var py = null;
+  self.onmessage = function(e){
+    var code = e.data.code, stdin = String(e.data.stdin || ''), base = e.data.base;
+    (async function(){
+      try{
+        if(!py){
+          // Pyodide 314 refuses to run in a classic worker ("Classic web
+          // workers are not supported"), so this is a module worker and the
+          // ESM build gets pulled in with a dynamic import.
+          var mod = await import(base + 'pyodide.mjs');
+          py = await mod.loadPyodide({ indexURL: base });
+          self.postMessage({ ready: true });
+        }
+        var out = '', err = '';
+        py.setStdout({ batched: function(t){ out += t + '\n'; } });
+        py.setStderr({ batched: function(t){ err += t + '\n'; } });
+        try{
+          var lines = stdin.length ? stdin.split('\n') : [];
+          var i = 0;
+          py.setStdin({ stdin: function(){ return i < lines.length ? lines[i++] + '\n' : null; } });
+        }catch(ignored){}
+        try{
+          await py.runPythonAsync(code);
+        }catch(ex){
+          err += String((ex && ex.message) || ex) + '\n';
+        }
+        self.postMessage({ stdout: out, stderr: err });
+      }catch(fatal){
+        self.postMessage({ fatal: String((fatal && fatal.message) || fatal) });
+      }
+    })();
+  };
+}
+
+function bhJsWorkerBody(){
+  self.onmessage = function(e){
+    var out = '', err = '';
+    var fmt = function(a){
+      if (typeof a === 'string') return a;
+      try { return JSON.stringify(a); } catch(ignored) { return String(a); }
+    };
+    var join = function(args){ return Array.prototype.map.call(args, fmt).join(' '); };
+    // Node sends console.warn/error to stderr, so match that.
+    console.log = function(){ out += join(arguments) + '\n'; };
+    console.info = console.log;
+    console.debug = console.log;
+    console.warn = function(){ err += join(arguments) + '\n'; };
+    console.error = function(){ err += join(arguments) + '\n'; };
+    try {
+      (new Function(e.data.code))();
+    } catch(ex) {
+      err += ((ex && ex.stack) ? ex.stack : String(ex)) + '\n';
+    }
+    self.postMessage({ stdout: out, stderr: err });
+  };
+}
+
+function bhSpawn(bodyFn, type){
+  var url = URL.createObjectURL(new Blob(['(' + bodyFn.toString() + ')();'], {type:'text/javascript'}));
+  return { worker: type ? new Worker(url, {type:type}) : new Worker(url), url: url };
+}
+
+function bhLoadScript(src){
+  return new Promise(function(resolve, reject){
+    var el = document.createElement('script');
+    el.src = src; el.async = true;
+    el.onload = function(){ resolve(); };
+    el.onerror = function(){ reject(new Error('could not load ' + src)); };
+    document.head.appendChild(el);
+  });
+}
+
+function bhTimedOut(seconds){
+  return {ok:true, stdout:'', compile:'',
+          stderr:'Stopped: your program ran for more than ' + seconds + ' seconds. Check for a loop that never ends.'};
+}
+
+// ── Python: Pyodide, kept alive between runs (it is a ~10 MB download) ──
+// It lives in a Worker so an endless loop can be killed. On the main thread a
+// `while True:` would freeze the whole tab with no way back.
+var _bhPy = null;
+function bhPyKill(){
+  if(!_bhPy) return;
+  try{ _bhPy.worker.terminate(); }catch(ignored){}
+  try{ URL.revokeObjectURL(_bhPy.url); }catch(ignored){}
+  _bhPy = null;
+}
+async function bhRunPython(code, stdin, onStatus){
+  if(typeof Worker === 'undefined' || typeof Blob === 'undefined'){
+    return {ok:false, down:true, error:'This browser cannot run Python here.'};
+  }
+  if(!_bhPy){
+    try{ var sp = bhSpawn(bhPyWorkerBody, 'module'); _bhPy = {worker:sp.worker, url:sp.url, loaded:false}; }
+    catch(e){ return {ok:false, down:true, error:'Could not start the Python runner.'}; }
+  }
+  var P = _bhPy;
+  if(onStatus) onStatus(P.loaded ? '⏳ Running…' : '⏳ Getting Python ready — first run only, about 10 MB…');
+  return await new Promise(function(resolve){
+    var settled = false, timer = null;
+    var arm = function(ms){ if(timer) clearTimeout(timer); timer = setTimeout(expire, ms); };
+    var expire = function(){
+      if(settled) return; settled = true;
+      var hadLoaded = P.loaded;
+      bhPyKill();
+      resolve(hadLoaded ? bhTimedOut(15)
+        : {ok:false, down:true, error:'Python did not finish downloading. Check your connection and try again.'});
+    };
+    P.worker.onmessage = function(ev){
+      var d = ev.data || {};
+      if(d.ready){ P.loaded = true; if(onStatus) onStatus('⏳ Running…'); arm(15000); return; }
+      if(settled) return; settled = true; if(timer) clearTimeout(timer);
+      if(d.fatal){ bhPyKill(); resolve({ok:false, down:true, error:'The Python runner failed: ' + d.fatal}); return; }
+      resolve({ok:true, stdout:d.stdout||'', stderr:(d.stderr||'').trim(), compile:'', output:d.stdout||''});
+    };
+    P.worker.onerror = function(ev){
+      if(settled) return; settled = true; if(timer) clearTimeout(timer);
+      bhPyKill();
+      resolve({ok:false, down:true, error:'Python could not load in this browser' + ((ev && ev.message) ? ': ' + ev.message : '') + '.'});
+    };
+    arm(P.loaded ? 15000 : 120000);
+    // The worker runs from a blob: URL, which has no useful base path, so a
+    // relative PYODIDE_BASE would not resolve inside it. Make it absolute here.
+    var base = PYODIDE_BASE;
+    try{ base = new URL(PYODIDE_BASE, location.href).href; }catch(ignored){}
+    P.worker.postMessage({code:code, stdin:stdin||'', base:base});
+  });
+}
+
+// ── JavaScript: a throwaway Worker per run, so state never leaks between runs ──
+async function bhRunJsSource(js){
+  if(typeof Worker === 'undefined' || typeof Blob === 'undefined'){
+    return {ok:false, down:true, error:'This browser cannot run JavaScript here.'};
+  }
+  var sp;
+  try{ sp = bhSpawn(bhJsWorkerBody); }
+  catch(e){ return {ok:false, down:true, error:'Could not start the JavaScript runner.'}; }
+  return await new Promise(function(resolve){
+    var settled = false;
+    var finish = function(r){
+      if(settled) return; settled = true;
+      clearTimeout(timer);
+      try{ sp.worker.terminate(); }catch(ignored){}
+      try{ URL.revokeObjectURL(sp.url); }catch(ignored){}
+      resolve(r);
+    };
+    var timer = setTimeout(function(){ finish(bhTimedOut(5)); }, 5000);
+    sp.worker.onmessage = function(ev){
+      var d = ev.data || {};
+      finish({ok:true, stdout:d.stdout||'', stderr:(d.stderr||'').trim(), compile:'', output:d.stdout||''});
+    };
+    sp.worker.onerror = function(ev){
+      finish({ok:false, down:true, error:'The JavaScript runner failed' + ((ev && ev.message) ? ': ' + ev.message : '') + '.'});
+    };
+    sp.worker.postMessage({code:js});
+  });
+}
+async function bhRunJs(code, stdin, onStatus){
+  if(onStatus) onStatus('⏳ Running…');
+  return await bhRunJsSource(code);
+}
+
+// ── TypeScript: compile to JS, then hand it to the JavaScript runner ──
+async function bhRunTs(code, stdin, onStatus){
+  if(onStatus) onStatus('⏳ Compiling…');
+  try{
+    if(!window.ts) await bhLoadScript(TS_URL);
+  }catch(e){ return {ok:false, down:true, error:'Could not load the TypeScript compiler.'}; }
+  var js;
+  try{
+    var r = window.ts.transpileModule(code, {
+      compilerOptions: { target: window.ts.ScriptTarget.ES2020 },
+      reportDiagnostics: true
+    });
+    var msgs = (r.diagnostics || []).map(function(d){
+      return window.ts.flattenDiagnosticMessageText(d.messageText, '\n');
+    }).join('\n').trim();
+    if(msgs) return {ok:true, stdout:'', stderr:'', compile:msgs};
+    js = r.outputText;
+  }catch(e){ return {ok:true, stdout:'', stderr:'', compile:String((e && e.message) || e)}; }
+  if(onStatus) onStatus('⏳ Running…');
+  return await bhRunJsSource(js);
+}
+
+// ── SQL: SQLite compiled to WebAssembly, one fresh in-memory database per run ──
+var _bhSql = null;
+async function bhRunSql(code, stdin, onStatus){
+  if(onStatus) onStatus('⏳ Running…');
+  try{
+    if(!_bhSql){
+      if(!window.initSqlJs) await bhLoadScript(SQLJS_BASE + 'sql-wasm.js');
+      _bhSql = await window.initSqlJs({ locateFile: function(f){ return SQLJS_BASE + f; } });
+    }
+  }catch(e){ return {ok:false, down:true, error:'Could not load the SQL engine.'}; }
+  var db = null;
+  try{
+    db = new _bhSql.Database();
+    var lines = [];
+    // sqlite3's own default output joins columns with a pipe, so match it.
+    db.exec(code).forEach(function(res){
+      res.values.forEach(function(row){
+        lines.push(row.map(function(v){ return v === null ? '' : String(v); }).join('|'));
+      });
+    });
+    return {ok:true, stdout: lines.length ? lines.join('\n') + '\n' : '', stderr:'', compile:'', output:''};
+  }catch(e){
+    return {ok:true, stdout:'', stderr:String((e && e.message) || e), compile:'', output:''};
+  }finally{
+    if(db){ try{ db.close(); }catch(ignored){} }
+  }
+}
+
+var BH_LOCAL = { python: bhRunPython, javascript: bhRunJs, typescript: bhRunTs, sql: bhRunSql };
+
+async function bhRun(code, stdin, onStatus){
   var L = bhLang();
-  if(!L || !L.piston) return {ok:false, error:'This language cannot run here.'};
+  if(!L || !L.piston) return {ok:false, down:false, error:'This language cannot run here.'};
+  var local = BH_LOCAL[activeLang];
+  if(local) return await local(code, stdin, onStatus);
+  return await bhRunRemote(code, stdin, L, onStatus);
+}
+
+async function bhRunRemote(code, stdin, L, onStatus){
+  if(onStatus) onStatus('⏳ Running…');
   try{
     var res = await fetch(BH_WORKER, { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ kind:'run', language:L.piston, version:L.ver, code:code, stdin:stdin||'' }) });
     var d = await res.json();
-    if(d && d.error) return {ok:false, error:d.error + (d.details? ' — '+d.details : '')};
+    if(d && d.error) return {ok:false, down:true, error:d.error + (d.details? ' — '+d.details : '')};
     var compileErr = (d.compile_output||'').trim();
     return {ok:true, stdout:d.stdout||'', stderr:(d.stderr||'').trim(), compile:compileErr, output:d.output||''};
-  }catch(e){ return {ok:false, error:'Could not reach the runner — check your internet, or the site must be opened on hackventure.dev.'}; }
+  }catch(e){ return {ok:false, down:true, error:'Could not reach the runner — check your connection.'}; }
+}
+
+// A runner that never started is not a wrong answer, and must not look like one.
+function bhShowDown(out, r){
+  if(r.down){
+    out.style.color = '#93c5fd';
+    out.textContent = '🛠 The code runner is unavailable right now, so your program never ran.\n'
+      + 'This is not a problem with your code — try again in a little while.\n\n('
+      + r.error + ')';
+  } else {
+    out.style.color = '#f87171';
+    out.textContent = '❌ ' + r.error;
+  }
 }
 
 var bhTab='play', bhProjOpen=null;
@@ -2382,6 +2635,13 @@ function renderBuild(){
   else {
     var tb=function(id,label){ return '<button onclick="bhSetTab(\''+id+'\')" style="flex:1;border:none;border-radius:12px;padding:10px;font-weight:800;cursor:pointer;background:'+(bhTab===id?'linear-gradient(135deg,#6366f1,#8b5cf6)':'var(--surface2,#22222e)')+';color:'+(bhTab===id?'#fff':'var(--muted,#8888a0)')+'">'+label+'</button>'; };
     var tabs='<div style="display:flex;gap:8px;margin-bottom:16px">'+tb('play','▶️ Play')+tb('chal','🎯 Challenges')+tb('proj','🏗️ Projects')+'</div>';
+    // Better to say this before they write code than after they press Run.
+    if(!BH_LOCAL[activeLang]){
+      tabs = '<div style="background:#1e2536;border:1px solid #35406a;border-radius:12px;padding:10px 12px;margin-bottom:12px;font-size:0.8rem;color:#a9b6dd">'
+        + '🛠 The shared code runner for <b>'+esc(activeLang)+'</b> is offline at the moment, so Run will not work here yet. '
+        + '<b>Python</b>, <b>JavaScript</b>, <b>TypeScript</b> and <b>SQL</b> all run fine — they run right inside your browser.'
+        + '</div>' + tabs;
+    }
     body = tabs + (bhTab==='play'?bhPlayground():bhTab==='chal'?bhChallenges():bhProjects());
   }
   document.getElementById('buildWrap').innerHTML = head + body;
@@ -2398,8 +2658,9 @@ function bhPlayground(){
 }
 async function bhRunPlay(){
   var out=document.getElementById('bhPlayOut'); out.style.color='#9aa'; out.textContent='⏳ Running…';
-  var r=await bhRun(document.getElementById('bhPlay').value,'');
-  if(!r.ok){ out.style.color='#f87171'; out.textContent='❌ '+r.error; return; }
+  var say=function(m){ out.style.color='#9aa'; out.textContent=m; };
+  var r=await bhRun(document.getElementById('bhPlay').value,'',say);
+  if(!r.ok){ bhShowDown(out, r); return; }
   var parts=[]; if(r.compile) parts.push('⚙️ '+r.compile); if(r.stdout) parts.push(r.stdout.replace(/\n+$/,'')); if(r.stderr) parts.push('⚠️ '+r.stderr);
   out.style.color = r.stderr||r.compile ? '#fbbf24' : '#8ef0a8';
   out.textContent = parts.length ? parts.join('\n') : '✅ Ran with no output.';
@@ -2432,11 +2693,12 @@ function bhChallenges(){
 async function bhRunChal(id){
   var c=BH_CHALLENGES.find(function(x){return x.id===id;});
   var out=document.getElementById('bho_'+id); out.style.color='#9aa'; out.textContent='⏳ Running…';
-  var r=await bhRun(document.getElementById('bhc_'+id).value,'');
+  var say=function(m){ out.style.color='#9aa'; out.textContent=m; };
+  var r=await bhRun(document.getElementById('bhc_'+id).value,'',say);
   bhCheck(out, r, c.want, 'bc_'+activeLang+'_'+c.id, c.xp, c.gems);
 }
 function bhCheck(out, r, want, doneKey, xp, gems){
-  if(!r.ok){ out.style.color='#f87171'; out.textContent='❌ '+r.error; return false; }
+  if(!r.ok){ bhShowDown(out, r); return false; }
   if(r.compile){ out.style.color='#f87171'; out.textContent='⚙️ Build error:\n'+r.compile; return false; }
   var got=r.stdout;
   var pass = bhNorm(got)===bhNorm(want);
@@ -2480,7 +2742,8 @@ async function bhRunProj(pid, ix){
   var p=BH_PROJECTS.find(function(x){return x.id===pid;}), s=p.steps[ix];
   var out=document.getElementById('bhpo_'+pid+'_'+ix); out.style.color='#9aa'; out.textContent='⏳ Running…';
   var per=Math.round(p.xp/p.steps.length), perG=Math.max(1,Math.round(p.gems/p.steps.length));
-  var r=await bhRun(document.getElementById('bhp_'+pid+'_'+ix).value,'');
+  var say=function(m){ out.style.color='#9aa'; out.textContent=m; };
+  var r=await bhRun(document.getElementById('bhp_'+pid+'_'+ix).value,'',say);
   var ok=bhCheck(out, r, s.want, 'bp_'+activeLang+'_'+pid+'_'+ix, per, perG);
   if(ok){ var u=bhUser(); if(p.steps.every(function(_,j){return u.buildDone['bp_'+activeLang+'_'+pid+'_'+j];})){ toast('🏆 Project complete: '+p.title+'!'); setTimeout(renderBuild,900); } }
 }
