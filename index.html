@@ -484,6 +484,10 @@ input{font-family:inherit;outline:none;border:none}
           <input class="text-input" id="loginUser" type="text" placeholder="username or you@example.com" autocomplete="username" autocapitalize="none">
         </div>
         <div class="input-group">
+          <div class="input-label">Email</div>
+          <input class="text-input" id="loginEmail" type="email" placeholder="the email on your account" autocomplete="email" autocapitalize="none">
+        </div>
+        <div class="input-group">
           <div class="input-label">Password</div>
           <input class="text-input" id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password">
         </div>
@@ -1976,6 +1980,8 @@ async function doReset() {
 
   cancelReset();
   document.getElementById('loginUser').value = target.username;
+  const le2 = document.getElementById('loginEmail');
+  if (le2) le2.value = target.acct.email || '';
   document.getElementById('loginPass').value = '';
   const le = document.getElementById('loginError');
   le.style.color = 'var(--green)';
@@ -1986,6 +1992,10 @@ async function doReset() {
 async function doLogin() {
   try {
     let user = document.getElementById('loginUser').value.trim().toLowerCase();
+    // Field 1 gets swapped for the real username when an email is typed there,
+    // so keep the original around for the email check further down.
+    const typedId = user;
+    const emailBox = ((document.getElementById('loginEmail') || {}).value || '').trim().toLowerCase();
     const pass = document.getElementById('loginPass').value.trim();
     const err = document.getElementById('loginError');
     err.style.color = 'var(--red)';
@@ -2049,6 +2059,18 @@ async function doLogin() {
     // whenever _pass was missing, which let any password through.
     if (!acct._pass) { err.textContent = 'This account has no password saved yet — use "Forgot password?" to set one.'; return; }
     if (acct._pass !== hashPass(pass)) { err.textContent = 'Wrong password'; return; }
+
+    // Second gate: the email saved on the account. Checked after the password
+    // so a stranger can't fish for which address an account belongs to.
+    // An email typed into field 1 counts, so nobody enters it twice. Accounts
+    // that never saved an email sign in on username + password, as before -
+    // there is no way for them to add one without getting in first.
+    const onAccount = (acct.email || '').toLowerCase();
+    if (onAccount) {
+      const given = emailBox || (typedId.indexOf('@') !== -1 ? typedId : '');
+      if (!given) { err.textContent = 'Enter the email on your account'; return; }
+      if (given !== onAccount) { err.textContent = "That's not the email on this account"; return; }
+    }
 
     isGuest = false;
     S.currentUser = user;

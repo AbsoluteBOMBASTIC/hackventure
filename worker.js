@@ -15,6 +15,7 @@
 const ALLOWED_ORIGINS = [
   'https://hackventure.dev',
   'https://www.hackventure.dev',
+  'https://hackventure.pages.dev',
   'https://codequest-iaro.netlify.app',
   'http://localhost:8888',
 ];
@@ -49,6 +50,11 @@ export default {
     let body;
     try { body = await request.json(); }
     catch { return json({ error: 'Bad JSON' }, 400, cors); }
+
+    // ── Build hub: run code via the Piston runner ──
+    if (body && body.kind === 'run') {
+      return await runCode(body, cors);
+    }
 
     const { kind, lang, langName } = body;
     if (!lang || !langName || !/^[a-z]+$/.test(lang)) {
@@ -136,6 +142,46 @@ export default {
 function int(v, min, max) {
   const n = parseInt(v);
   return isNaN(n) ? min : Math.max(min, Math.min(max, n));
+}
+
+// Run user code by proxying to the free Piston execution API
+async function runCode(body, cors) {
+  const language = String(body.language || '');
+  const version = String(body.version || '*');
+  const code = String(body.code || '');
+  if (!language || !code) return json({ error: 'Missing language or code' }, 400, cors);
+  if (code.length > 20000) return json({ error: 'Code is too long (20,000 character max).' }, 400, cors);
+  try {
+    const res = await fetch('https://emkc.org/api/v2/piston/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        language,
+        version,
+        files: [{ content: code }],
+        stdin: String(body.stdin || ''),
+        run_timeout: 5000,
+        compile_timeout: 10000,
+      }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      return json({ error: 'Runner error ' + res.status, details: t.slice(0, 300) }, 502, cors);
+    }
+    const data = await res.json();
+    const run = data.run || {};
+    const compile = data.compile || null;
+    return json({
+      ok: true,
+      stdout: run.stdout || '',
+      stderr: run.stderr || '',
+      output: run.output || '',
+      exitCode: run.code,
+      compile_output: compile ? (compile.stderr || compile.output || '') : '',
+    }, 200, cors);
+  } catch (e) {
+    return json({ error: 'Runner unavailable — try again in a moment.', details: String(e && e.message || e) }, 502, cors);
+  }
 }
 
 function json(obj, status, cors) {
