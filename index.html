@@ -496,6 +496,10 @@ input{font-family:inherit;outline:none;border:none}
       <div id="formReset" style="display:none">
         <div style="font-size:0.85rem;color:var(--muted);margin-bottom:14px;text-align:center">Resetting password for <strong id="resetUserLabel" style="color:var(--text)"></strong></div>
         <div class="input-group">
+          <div class="input-label">Email On The Account</div>
+          <input class="text-input" id="resetEmail" type="email" placeholder="you@example.com" autocomplete="email" autocapitalize="none">
+        </div>
+        <div class="input-group">
           <div class="input-label">New Password</div>
           <input class="text-input" id="resetPass1" type="password" placeholder="min 6 characters" autocomplete="new-password">
         </div>
@@ -590,7 +594,7 @@ input{font-family:inherit;outline:none;border:none}
     <div id="podiumWrap" style="margin-bottom:20px"></div>
     <div class="leader-list-wrap" id="leaderList"></div>
     <div style="text-align:center;color:var(--muted);font-size:0.78rem;margin-top:16px;line-height:1.6">
-      🏆 This leaderboard ranks everyone who has signed up<br>in this browser, on this device.
+      🏆 This leaderboard ranks every Hackventure player,<br>on every device.
     </div>
     <button class="sync-btn" id="syncNowBtn" onclick="refreshLeaderboard()">🔄 Refresh Leaderboard</button>
   </div>
@@ -1807,12 +1811,63 @@ function switchTab(tab) {
   document.getElementById('signupError').textContent = '';
 }
 
-function showResetForm() {
-  const user = document.getElementById('loginUser').value.trim().toLowerCase();
-  if (!user) { document.getElementById('loginError').textContent = 'Type your username above first'; return; }
-  if (!S.users[user]) { document.getElementById('loginError').textContent = 'No account with that username on this device'; return; }
-  document.getElementById('loginError').textContent = '';
-  document.getElementById('resetUserLabel').textContent = S.users[user].name || user;
+// ── Account lookup that works on ANY device ──
+// Shapes a cloud `players` row into the object the app uses locally.
+function rowToUser(row) {
+  return {
+    name: row.name, username: row.username,
+    email: row.email || null,
+    _pass: row.pass_hash,
+    xp: row.xp || 0, streak: row.streak || 0,
+    progress: row.progress || {}, badges: row.badges || [],
+    correct: row.correct || 0, lastLang: row.last_lang || 'python',
+    lastStudiedDate: row.last_studied || null,
+    gems: row.gems || 0, boost: row.boost || null,
+    langXp: row.lang_xp || {}, crowns: row.crowns || {}
+  };
+}
+
+// Finds an account by username OR email, looking on this device first and
+// then in the cloud, so every account is reachable from every device.
+async function findAccount(idRaw) {
+  const id = (idRaw || '').trim().toLowerCase();
+  if (!id) return null;
+  if (id.includes('@')) {
+    const localName = Object.keys(S.users).find(k => S.users[k].email && S.users[k].email.toLowerCase() === id);
+    if (localName) return { username: localName, acct: S.users[localName] };
+    if (!SB_CONFIGURED) return null;
+    const row = await loadPlayerByEmail(id);
+    return (row && row.username) ? { username: String(row.username).toLowerCase(), acct: rowToUser(row) } : null;
+  }
+  if (S.users[id]) return { username: id, acct: S.users[id] };
+  if (!SB_CONFIGURED) return null;
+  const row = await loadPlayer(id);
+  return row ? { username: id, acct: rowToUser(row) } : null;
+}
+
+// The account currently being reset (set by showResetForm, read by doReset).
+let _resetTarget = null;
+
+async function showResetForm() {
+  const err = document.getElementById('loginError');
+  const raw = document.getElementById('loginUser').value.trim();
+  err.style.color = 'var(--red)';
+  if (!raw) { err.textContent = 'Type your username or email above first'; return; }
+
+  err.style.color = 'var(--muted)';
+  err.textContent = 'Looking up your account...';
+
+  let target = null;
+  try { target = await findAccount(raw); }
+  catch (e) { err.style.color = 'var(--red)'; err.textContent = 'Could not reach the server — check your connection'; return; }
+
+  err.style.color = 'var(--red)';
+  if (!target) { err.textContent = 'No account with that username or email — check the spelling and your connection'; return; }
+
+  _resetTarget = target;
+  err.textContent = '';
+  document.getElementById('resetUserLabel').textContent = target.acct.name || target.username;
+  document.getElementById('resetEmail').value = '';
   document.getElementById('resetPass1').value = '';
   document.getElementById('resetPass2').value = '';
   document.getElementById('resetError').textContent = '';
@@ -1826,6 +1881,11 @@ function showResetForm() {
 }
 
 function cancelReset() {
+  _resetTarget = null;
+  const e1 = document.getElementById('resetEmail'); if (e1) e1.value = '';
+  const p1 = document.getElementById('resetPass1'); if (p1) p1.value = '';
+  const p2 = document.getElementById('resetPass2'); if (p2) p2.value = '';
+  const re = document.getElementById('resetError'); if (re) re.textContent = '';
   document.getElementById('formReset').style.display = 'none';
   document.getElementById('formLogin').style.display = '';
   document.getElementById('loginDivider').style.display = '';
@@ -1834,22 +1894,76 @@ function cancelReset() {
   document.getElementById('tabSignup').style.visibility = '';
 }
 
-function doReset() {
-  const user = document.getElementById('loginUser').value.trim().toLowerCase();
+async function doReset() {
+  const err = document.getElementById('resetError');
+  const btn = document.getElementById('resetBtn');
+  err.style.color = 'var(--red)';
+
+  const target = _resetTarget;
+  if (!target) { err.textContent = 'Start again from "Forgot password?"'; return; }
+
+  const email = document.getElementById('resetEmail').value.trim().toLowerCase();
   const p1 = document.getElementById('resetPass1').value;
   const p2 = document.getElementById('resetPass2').value;
-  const err = document.getElementById('resetError');
-  if (!S.users[user]) { err.textContent = 'Account no longer found'; return; }
+  const onAccount = (target.acct.email || '').toLowerCase();
+
+  // Usernames are public on the leaderboard, so the email on the account is
+  // what proves this is really yours before the password is allowed to change.
+  if (!onAccount) { err.textContent = 'This account has no email saved, so it cannot be reset here'; return; }
+  if (!email) { err.textContent = 'Enter the email this account was signed up with'; return; }
+  if (email !== onAccount) { err.textContent = "That email doesn't match this account"; return; }
   if (p1.length < 6) { err.textContent = 'Password must be 6+ characters'; return; }
   if (p1 !== p2) { err.textContent = "Passwords don't match — try again"; return; }
-  S.users[user]._pass = hashPass(p1);
+
+  const hash = hashPass(p1);
+
+  // Write to the cloud FIRST. If it fails nothing changes, so the password
+  // can never end up different on one device than on another.
+  if (SB_CONFIGURED) {
+    btn.disabled = true; btn.textContent = 'Saving...';
+    let ok = false;
+    try {
+      await sbFetch('players?username=eq.' + encodeURIComponent(target.username), {
+        method: 'PATCH', prefer: 'return=minimal',
+        body: { pass_hash: hash, updated_at: new Date().toISOString() }
+      });
+      ok = true;
+    } catch (e) {
+      // Fall back to the same upsert style savePlayer() uses.
+      try {
+        const a = target.acct;
+        await sbFetch('players?on_conflict=username', {
+          method: 'POST', prefer: 'resolution=merge-duplicates',
+          body: {
+            username: target.username, name: a.name, email: a.email || null,
+            pass_hash: hash, xp: a.xp || 0, streak: a.streak || 0,
+            progress: a.progress || {}, badges: a.badges || [],
+            correct: a.correct || 0, last_lang: a.lastLang || 'python',
+            last_studied: a.lastStudiedDate || null,
+            updated_at: new Date().toISOString()
+          }
+        });
+        ok = true;
+      } catch (e2) { ok = false; }
+    }
+    btn.disabled = false; btn.textContent = 'Reset Password';
+    if (!ok) { err.textContent = 'Could not save to the server — check your connection and try again'; return; }
+  }
+
+  // Cloud is updated, so it is safe to mirror it on this device.
+  const local = S.users[target.username] || target.acct;
+  local._pass = hash;
+  S.users[target.username] = local;
   save();
+
   cancelReset();
+  document.getElementById('loginUser').value = target.username;
   document.getElementById('loginPass').value = '';
   const le = document.getElementById('loginError');
   le.style.color = 'var(--green)';
   le.textContent = '✅ Password reset! Sign in with your new password.';
 }
+
 
 async function doLogin() {
   try {
@@ -1874,18 +1988,16 @@ async function doLogin() {
       showSyncStatus('syncing', '☁️ Checking account...');
       const cloud = await loadPlayer(user);
       if (cloud) {
-        S.users[user] = {
-          name: cloud.name, username: cloud.username,
-          email: cloud.email || null,
-          _pass: cloud.pass_hash,
-          xp: cloud.xp || 0, streak: cloud.streak || 0,
-          progress: cloud.progress || {}, badges: cloud.badges || [],
-          correct: cloud.correct || 0, lastLang: cloud.last_lang || 'python',
-          lastStudiedDate: cloud.last_studied || null,
-          gems: cloud.gems || 0, boost: cloud.boost || null
-        };
+        S.users[user] = rowToUser(cloud);
+        // Friend code is derived from the username, so it rebuilds identically
+        // on a new device instead of coming back blank.
+        S.friendCodes = S.friendCodes || {};
+        if (!S.friendCodes[user]) S.friendCodes[user] = genCode(user);
         save();
-        checkAndResetStreak(); // always check after loading cloud data
+        // NOTE: do NOT call checkAndResetStreak() here. S.currentUser is still
+        // null at this point, so getU() would be undefined and sign-in would
+        // throw on any device that had not seen this account before.
+        // enterApp() runs it below, once currentUser is set.
       }
     }
 
@@ -1923,7 +2035,15 @@ async function doSignup() {
     if (S.users[user]) { err.textContent = 'Username taken — choose another'; return; }
     const btn = document.getElementById('signupBtn');
     btn.disabled = true; btn.textContent = 'Creating...';
-    if (SB_CONFIGURED) { const dup = await loadPlayerByEmail(email); if (dup) { err.style.color = 'var(--red)'; err.textContent = 'That email is already registered'; btn.disabled = false; btn.textContent = 'Create Account 🎉'; return; } }
+    if (SB_CONFIGURED) {
+      const dup = await loadPlayerByEmail(email);
+      if (dup) { err.style.color = 'var(--red)'; err.textContent = 'That email is already registered'; btn.disabled = false; btn.textContent = 'Create Account 🎉'; return; }
+      // The username check has to hit the cloud too. Checking only this device
+      // let two people on two devices claim the same name and then overwrite
+      // each other's progress in the shared players table.
+      const takenInCloud = await loadPlayer(user);
+      if (takenInCloud) { err.style.color = 'var(--red)'; err.textContent = 'Username taken — choose another'; btn.disabled = false; btn.textContent = 'Create Account 🎉'; return; }
+    }
     S.users[user] = { name, username:user, email, _pass:hashPass(pass), xp:0, streak:0, progress:{}, badges:[], correct:0, lastLang:'python', lastStudiedDate:null };
     S.friendCodes = S.friendCodes || {};
     S.friendCodes[user] = genCode(user);
@@ -1967,6 +2087,7 @@ function logout() {
 
 function checkAndResetStreak() {
   const u = getU();
+  if (!u) return; // no user signed in yet — nothing to check
   if (!u.lastStudiedDate || (u.streak || 0) === 0) return;
   const today = new Date().toDateString();
   const yesterday = new Date();
