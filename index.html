@@ -395,8 +395,8 @@ input{font-family:inherit;outline:none;border:none}
 /* ═══════════════════════════════════════════
    SUPABASE SYNC BANNER
 ═══════════════════════════════════════════ */
-.sync-status{position:fixed;top:60px;left:50%;transform:translateX(-50%) translateY(-80px);background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px 16px;font-size:0.8rem;font-weight:700;z-index:300;transition:all .4s;white-space:nowrap;box-shadow:var(--shadow)}
-.sync-status.show{transform:translateX(-50%) translateY(0)}
+.sync-status{position:fixed;top:60px;left:50%;transform:translateX(-50%) translateY(-80px);opacity:0;visibility:hidden;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px 16px;font-size:0.8rem;font-weight:700;z-index:300;transition:all .4s;white-space:nowrap;box-shadow:var(--shadow)}
+.sync-status.show{transform:translateX(-50%) translateY(0);opacity:1;visibility:visible}
 .sync-status.syncing{color:var(--yellow)}
 .sync-status.ok{color:var(--green)}
 .sync-status.err{color:var(--red)}
