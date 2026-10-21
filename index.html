@@ -1605,6 +1605,8 @@ function load() {
 
 // Simple, dependency-free password hash that NEVER throws — works with
 // any character (emoji, accents, symbols) unlike raw btoa().
+// No longer used by the app. The database checks passwords now, and it has
+// an exact copy of this (hv_private.legacy_hash) for accounts created before.
 function hashPass(str) {
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let i = 0; i < str.length; i++) {
@@ -1658,59 +1660,68 @@ async function sbFetch(path, opts = {}) {
   try { return await res.json(); } catch(e) { return null; }
 }
 
+// ── Talking to the database ──
+// Every read and write of an account goes through the hv_ functions in the
+// database. The players table itself only lets the website read the
+// leaderboard columns, so nobody can read emails or passwords, or change
+// someone else's account - not even with the key that's in this file.
+async function sbRpc(name, args) {
+  return await sbFetch('rpc/' + name, { method: 'POST', body: args || {} });
+}
+
+// The parts of a player the database lets the app save. Email is left out on
+// purpose: it changes only through saveAddEmail(), which checks it isn't taken.
+function cloudFields(u) {
+  return {
+    name: u.name, xp: u.xp || 0, streak: u.streak || 0,
+    progress: u.progress || {}, badges: u.badges || [], correct: u.correct || 0,
+    last_lang: u.lastLang || 'python', last_studied: u.lastStudiedDate || null,
+    gems: u.gems || 0, boost: u.boost || null, lang_xp: u.langXp || {},
+    crowns: u.crowns || {}
+  };
+}
+
 // ── Save current player to Supabase ──
+// Proves who is saving with the session token from sign-in, never a password.
 async function savePlayer(u) {
   if (isGuest || !u || !SB_CONFIGURED) { save(); return; }
   save(); // always save locally first
+  if (!u._token) { showSyncStatus('err', '⚠️ Sign in again to sync'); return; }
   try {
     showSyncStatus('syncing', '☁️ Saving...');
-    const payload = {
-      username: u.username || S.currentUser,
-      name: u.name,
-      pass_hash: u._pass,
-      xp: u.xp || 0,
-      streak: u.streak || 0,
-      progress: u.progress || {},
-      badges: u.badges || [],
-      correct: u.correct || 0,
-      last_lang: u.lastLang || 'python',
-      last_studied: u.lastStudiedDate || null,
-      updated_at: new Date().toISOString()
-    };
-    try {
-      await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: Object.assign({}, payload, { gems: u.gems || 0, boost: u.boost || null, lang_xp: u.langXp || {}, email: u.email || null, crowns: u.crowns || {} }) });
-    } catch(_lx) {
-      await sbFetch('players?on_conflict=username', { method: 'POST', prefer: 'resolution=merge-duplicates', body: payload });
+    const r = await sbRpc('hv_save', { p_token: u._token, p_data: cloudFields(u) });
+    if (r && r.status === 'ok') { showSyncStatus('ok', '✅ Saved!'); return; }
+    if (r && r.status === 'signed_out') {
+      // The session was ended elsewhere, e.g. by a password reset.
+      delete u._token; save();
+      showSyncStatus('err', '⚠️ Sign in again to sync');
+      return;
     }
-    showSyncStatus('ok', '✅ Saved!');
+    showSyncStatus('err', '⚠️ Saved locally only');
   } catch(e) {
     console.error('Supabase save failed:', e.message);
     showSyncStatus('err', '⚠️ Saved locally only');
   }
 }
 
-// ── Load player from Supabase by username ──
-// These THROW when the server cannot be reached, and return null only when
-// the lookup really came back empty. That difference matters: swallowing the
-// error made "the backend is down" and "no such account" identical to every
-// caller, which is how a dead Supabase project showed up to players as
-// "No account found - sign up first!" on accounts that existed.
-// Every caller must therefore wrap these in try/catch.
-async function loadPlayer(username) {
-  if (!SB_CONFIGURED) return null;
-  const rows = await sbFetch('players?username=eq.' + encodeURIComponent(username) + '&limit=1');
-  return rows && rows[0] ? rows[0] : null;
-}
-async function loadPlayerByEmail(email) {
-  if (!SB_CONFIGURED) return null;
-  const rows = await sbFetch('players?email=eq.' + encodeURIComponent(email) + '&limit=1');
-  return rows && rows[0] ? rows[0] : null;
+// ── Is a username or email in use? ──
+// Throws when the server can't be reached, and says {exists:false} only when
+// it really isn't in use - the difference that once turned an outage into
+// "No account found" on a real account. For an email it says only whether
+// it's in use, never whose it is.
+async function lookupAccount(id) {
+  if (!SB_CONFIGURED) return { exists: false };
+  return (await sbRpc('hv_lookup', { p_id: id })) || { exists: false };
 }
 async function syncMyAccount(){
   if (isGuest || !SB_CONFIGURED || !S.currentUser) return;
-  let cloud; try { cloud = await loadPlayer(S.currentUser); } catch(e){ return; }
-  if (!cloud) return;
-  const u = getU(); if (!u) return;
+  const u = getU(); if (!u || !u._token) return;
+  let r; try { r = await sbRpc('hv_me', { p_token: u._token }); } catch(e){ return; }
+  if (!r || r.status !== 'ok' || !r.player) {
+    if (r && r.status === 'signed_out') { delete u._token; save(); }
+    return;
+  }
+  const cloud = r.player;
   u.xp = Math.max(u.xp||0, cloud.xp||0);
   u.gems = Math.max(u.gems||0, cloud.gems||0);
   u.streak = Math.max(u.streak||0, cloud.streak||0);
@@ -1827,7 +1838,6 @@ function rowToUser(row) {
   return {
     name: row.name, username: row.username,
     email: row.email || null,
-    _pass: row.pass_hash,
     xp: row.xp || 0, streak: row.streak || 0,
     progress: row.progress || {}, badges: row.badges || [],
     correct: row.correct || 0, lastLang: row.last_lang || 'python',
@@ -1837,29 +1847,16 @@ function rowToUser(row) {
   };
 }
 
-// Finds an account by username OR email, looking on this device first and
-// then in the cloud, so every account is reachable from every device.
+// Finds an account by username OR email for the password-reset form. It only
+// learns whether the account exists and what to call it, never its email:
+// the database checks the email itself when the reset is submitted.
 async function findAccount(idRaw) {
   const id = (idRaw || '').trim().toLowerCase();
   if (!id) return null;
-  if (id.includes('@')) {
-    const localName = Object.keys(S.users).find(k => S.users[k].email && S.users[k].email.toLowerCase() === id);
-    if (localName) return { username: localName, acct: S.users[localName] };
-    if (!SB_CONFIGURED) return null;
-    const row = await loadPlayerByEmail(id);
-    return (row && row.username) ? { username: String(row.username).toLowerCase(), acct: rowToUser(row) } : null;
-  }
-  const localAcct = S.users[id];
-  const usableLocal = !!localAcct && !localAcct._stub;
-  // A leaderboard stub has no email and no password, so it can't prove
-  // ownership. Go to the cloud for the full record whenever the local copy
-  // is a stub or is missing the email the reset check needs.
-  if (usableLocal && localAcct.email) return { username: id, acct: localAcct };
-  if (SB_CONFIGURED) {
-    const row = await loadPlayer(id);
-    if (row) return { username: id, acct: rowToUser(row) };
-  }
-  return usableLocal ? { username: id, acct: localAcct } : null;
+  const viaEmail = id.includes('@');
+  const r = await lookupAccount(id);   // throws if the server can't be reached
+  if (!r || !r.exists) return null;
+  return { id: id, label: viaEmail ? id : (r.name || id), hasEmail: viaEmail || !!r.has_email };
 }
 
 // The account currently being reset (set by showResetForm, read by doReset).
@@ -1880,10 +1877,11 @@ async function showResetForm() {
 
   err.style.color = 'var(--red)';
   if (!target) { err.textContent = 'No account with that username or email — check the spelling and your connection'; return; }
+  if (!target.hasEmail) { err.textContent = "This account has no email saved, so its password can't be reset here"; return; }
 
   _resetTarget = target;
   err.textContent = '';
-  document.getElementById('resetUserLabel').textContent = target.acct.name || target.username;
+  document.getElementById('resetUserLabel').textContent = target.label;
   document.getElementById('resetEmail').value = '';
   document.getElementById('resetPass1').value = '';
   document.getElementById('resetPass2').value = '';
@@ -1920,68 +1918,40 @@ async function doReset() {
   if (!target) { err.textContent = 'Start again from "Forgot password?"'; return; }
 
   const email = document.getElementById('resetEmail').value.trim().toLowerCase();
-  const p1 = document.getElementById('resetPass1').value;
-  const p2 = document.getElementById('resetPass2').value;
-  const onAccount = (target.acct.email || '').toLowerCase();
+  // Trimmed, because sign-in trims the password too. A reset password with a
+  // stray space at the end could never be used to sign in before.
+  const p1 = document.getElementById('resetPass1').value.trim();
+  const p2 = document.getElementById('resetPass2').value.trim();
 
-  // Usernames are public on the leaderboard, so the email on the account is
-  // what proves this is really yours before the password is allowed to change.
-  if (!onAccount) { err.textContent = 'This account has no email saved, so it cannot be reset here'; return; }
   if (!email) { err.textContent = 'Enter the email this account was signed up with'; return; }
-  if (email !== onAccount) { err.textContent = "That email doesn't match this account"; return; }
   if (p1.length < 6) { err.textContent = 'Password must be 6+ characters'; return; }
   if (p1 !== p2) { err.textContent = "Passwords don't match — try again"; return; }
 
-  const hash = hashPass(p1);
+  // The database checks the email and changes the password in one step, so
+  // the email on the account never has to leave the server.
+  btn.disabled = true; btn.textContent = 'Saving...';
+  let r = null;
+  try { r = await sbRpc('hv_reset', { p_id: target.id, p_email: email, p_new_password: p1 }); }
+  catch (e) { r = null; }
+  btn.disabled = false; btn.textContent = 'Reset Password';
 
-  // Write to the cloud FIRST. If it fails nothing changes, so the password
-  // can never end up different on one device than on another.
-  if (SB_CONFIGURED) {
-    btn.disabled = true; btn.textContent = 'Saving...';
-    let ok = false;
-    try {
-      await sbFetch('players?username=eq.' + encodeURIComponent(target.username), {
-        method: 'PATCH', prefer: 'return=minimal',
-        body: { pass_hash: hash, updated_at: new Date().toISOString() }
-      });
-      ok = true;
-    } catch (e) {
-      // Fall back to the same upsert style savePlayer() uses.
-      try {
-        const a = target.acct;
-        await sbFetch('players?on_conflict=username', {
-          method: 'POST', prefer: 'resolution=merge-duplicates',
-          body: {
-            username: target.username, name: a.name, email: a.email || null,
-            pass_hash: hash, xp: a.xp || 0, streak: a.streak || 0,
-            progress: a.progress || {}, badges: a.badges || [],
-            correct: a.correct || 0, last_lang: a.lastLang || 'python',
-            last_studied: a.lastStudiedDate || null,
-            updated_at: new Date().toISOString()
-          }
-        });
-        ok = true;
-      } catch (e2) { ok = false; }
-    }
-    btn.disabled = false; btn.textContent = 'Reset Password';
-    if (!ok) { err.textContent = 'Could not save to the server — check your connection and try again'; return; }
-  }
+  const st = r && r.status;
+  if (!r)                       { err.textContent = 'Could not reach the server — check your connection and try again'; return; }
+  if (st === 'wrong_email')     { err.textContent = "That email doesn't match this account"; return; }
+  if (st === 'no_email')        { err.textContent = "This account has no email saved, so its password can't be reset here"; return; }
+  if (st === 'locked')          { err.textContent = 'Too many wrong tries — wait 5 minutes and try again'; return; }
+  if (st === 'no_account')      { err.textContent = 'No account with that username or email'; return; }
+  if (st === 'weak_password')   { err.textContent = 'Password must be 6+ characters'; return; }
+  if (st !== 'ok')              { err.textContent = 'Something went wrong — try again'; return; }
 
-  // Cloud is updated, so it is safe to mirror it on this device.
-  // Merge onto the record findAccount() resolved rather than whatever this
-  // device happens to hold: if the local copy is a leaderboard stub, keeping
-  // it would leave an account doLogin() refuses on purpose.
-  const held = S.users[target.username];
-  const base = (held && !held._stub) ? held : target.acct;
-  const local = Object.assign({}, base, { _pass: hash });
-  delete local._stub;
-  S.users[target.username] = local;
-  save();
+  // A reset signs the account out on every device, this one included.
+  const held = S.users[r.username];
+  if (held) { delete held._token; delete held._pass; save(); }
 
   cancelReset();
-  document.getElementById('loginUser').value = target.username;
+  document.getElementById('loginUser').value = r.username;
   const le2 = document.getElementById('loginEmail');
-  if (le2) le2.value = target.acct.email || '';
+  if (le2) le2.value = email;
   document.getElementById('loginPass').value = '';
   const le = document.getElementById('loginError');
   le.style.color = 'var(--green)';
@@ -2004,73 +1974,50 @@ async function doLogin() {
     const btn = document.getElementById('loginBtn');
     btn.disabled = true; btn.textContent = 'Signing in...';
 
-    // Every cloud lookup below can fail. When it does, say so - turning a
-    // network problem into "your account does not exist" sends players off to
-    // create a duplicate account instead of waiting a minute and retrying.
+    // The cloud call below can fail. When it does, say so - turning a network
+    // problem into "your account does not exist" sends players off to create
+    // a duplicate account instead of waiting a minute and retrying.
     const offline = (e) => {
       btn.disabled = false; btn.textContent = 'Sign In →';
       showSyncStatus('err', '⚠️ Server unreachable');
       err.style.color = 'var(--red)';
       err.textContent = "Can't reach the server right now — check your connection and try again.";
-      console.error('Sign-in lookup failed:', e && e.message);
+      console.error('Sign-in could not reach the server:', e && e.message);
     };
 
-    // If they typed an email, find the matching username (local, then cloud)
-    if (user.includes('@')) {
-      let found = Object.keys(S.users).find(k => S.users[k].email && S.users[k].email.toLowerCase() === user);
-      if (!found && SB_CONFIGURED) {
-        let byEmail;
-        try { byEmail = await loadPlayerByEmail(user); }
-        catch (e) { offline(e); return; }
-        if (byEmail && byEmail.username) found = String(byEmail.username).toLowerCase();
-      }
-      if (found) user = found;
-    }
-
-    // A local record only proves an account exists if it carries a password
-    // hash. syncLeaderboard() merges every player it displays into S.users as
-    // a name-only stub, so stubs - and anything else missing a hash - get
-    // confirmed against the cloud rather than trusted.
-    const held = S.users[user];
-    if ((!held || held._stub || !held._pass) && SB_CONFIGURED) {
-      showSyncStatus('syncing', '☁️ Checking account...');
-      let cloud;
-      try { cloud = await loadPlayer(user); }
-      catch (e) { offline(e); return; }
-      if (cloud) {
-        S.users[user] = rowToUser(cloud);
-        // Friend code is derived from the username, so it rebuilds identically
-        // on a new device instead of coming back blank.
-        S.friendCodes = S.friendCodes || {};
-        if (!S.friendCodes[user]) S.friendCodes[user] = genCode(user);
-        save();
-        // NOTE: do NOT call checkAndResetStreak() here. S.currentUser is still
-        // null at this point, so getU() would be undefined and sign-in would
-        // throw on any device that had not seen this account before.
-        // enterApp() runs it below, once currentUser is set.
-      }
-    }
+    // The database checks the password - and the email, when the account has
+    // one - and hands back a session token. Nothing secret is read here, and
+    // the password is never stored on this device.
+    showSyncStatus('syncing', '☁️ Checking account...');
+    let r;
+    try { r = await sbRpc('hv_login', { p_id: typedId, p_password: pass, p_email: emailBox || null }); }
+    catch (e) { offline(e); return; }
 
     btn.disabled = false; btn.textContent = 'Sign In →';
+    const st = r && r.status;
+    if (st === 'no_account')     { err.textContent = 'No account found — sign up first!'; return; }
+    if (st === 'wrong_password') { err.textContent = 'Wrong password'; return; }
+    if (st === 'need_email')     { err.textContent = 'Enter the email on your account'; return; }
+    if (st === 'wrong_email')    { err.textContent = "That's not the email on this account"; return; }
+    if (st === 'locked')         { err.textContent = 'Too many wrong tries — wait 5 minutes and try again'; return; }
+    if (st === 'no_password')    { err.textContent = 'This account has no password saved yet — use "Forgot password?" to set one.'; return; }
+    if (st !== 'ok' || !r.player || !r.token) { err.textContent = 'Something went wrong — try again'; return; }
 
-    const acct = S.users[user];
-    if (!acct || acct._stub) { err.textContent = 'No account found — sign up first!'; return; }
-    // Never sign in without checking a hash. The old code skipped the check
-    // whenever _pass was missing, which let any password through.
-    if (!acct._pass) { err.textContent = 'This account has no password saved yet — use "Forgot password?" to set one.'; return; }
-    if (acct._pass !== hashPass(pass)) { err.textContent = 'Wrong password'; return; }
-
-    // Second gate: the email saved on the account. Checked after the password
-    // so a stranger can't fish for which address an account belongs to.
-    // An email typed into field 1 counts, so nobody enters it twice. Accounts
-    // that never saved an email sign in on username + password, as before -
-    // there is no way for them to add one without getting in first.
-    const onAccount = (acct.email || '').toLowerCase();
-    if (onAccount) {
-      const given = emailBox || (typedId.indexOf('@') !== -1 ? typedId : '');
-      if (!given) { err.textContent = 'Enter the email on your account'; return; }
-      if (given !== onAccount) { err.textContent = "That's not the email on this account"; return; }
+    user = String(r.player.username || '').toLowerCase();
+    let acct = S.users[user];
+    if (acct && !acct._stub) {
+      // This device already has the account: keep its progress, and let
+      // syncMyAccount() merge in anything newer from the cloud.
+      acct._token = r.token;
+      if (!acct.email && r.player.email) acct.email = r.player.email;
+    } else {
+      acct = Object.assign(rowToUser(r.player), { _token: r.token });
+      S.users[user] = acct;
     }
+    // The old sign-in kept a copy of the password hash on the device. Not any more.
+    delete acct._pass;
+    S.friendCodes = S.friendCodes || {};
+    if (!S.friendCodes[user]) S.friendCodes[user] = genCode(user);
 
     isGuest = false;
     S.currentUser = user;
@@ -2101,35 +2048,36 @@ async function doSignup() {
     if (S.users[user]) { err.textContent = 'Username taken — choose another'; return; }
     const btn = document.getElementById('signupBtn');
     btn.disabled = true; btn.textContent = 'Creating...';
-    if (SB_CONFIGURED) {
-      let dup, takenInCloud;
-      try {
-        dup = await loadPlayerByEmail(email);
-        // The username check has to hit the cloud too. Checking only this device
-        // let two people on two devices claim the same name and then overwrite
-        // each other's progress in the shared players table.
-        takenInCloud = await loadPlayer(user);
-      } catch (e) {
-        // Creating it locally anyway would hand back an account that lives in
-        // this one browser and nowhere else - it disappears the moment they
-        // open the site on another device or domain. Stop instead.
-        err.style.color = 'var(--red)';
-        err.textContent = "Can't reach the server right now — try again in a minute.";
-        btn.disabled = false; btn.textContent = 'Create Account 🎉';
-        console.error('Sign-up lookup failed:', e && e.message);
-        return;
-      }
-      if (dup) { err.style.color = 'var(--red)'; err.textContent = 'That email is already registered'; btn.disabled = false; btn.textContent = 'Create Account 🎉'; return; }
-      if (takenInCloud) { err.style.color = 'var(--red)'; err.textContent = 'Username taken — choose another'; btn.disabled = false; btn.textContent = 'Create Account 🎉'; return; }
+    // The account is created in the database first, so it can never end up
+    // existing only in this one browser.
+    let r;
+    try { r = await sbRpc('hv_signup', { p_username: user, p_name: name, p_email: email, p_password: pass }); }
+    catch (e) {
+      err.style.color = 'var(--red)';
+      err.textContent = "Can't reach the server right now — try again in a minute.";
+      btn.disabled = false; btn.textContent = 'Create Account 🎉';
+      console.error('Sign-up could not reach the server:', e && e.message);
+      return;
     }
-    S.users[user] = { name, username:user, email, _pass:hashPass(pass), xp:0, streak:0, progress:{}, badges:[], correct:0, lastLang:'python', lastStudiedDate:null };
+    btn.disabled = false; btn.textContent = 'Create Account 🎉';
+    const st = r && r.status;
+    const problem = {
+      username_taken: 'Username taken — choose another',
+      email_taken:    'That email is already registered',
+      bad_username:   'Username: letters, numbers, _ only (up to 32)',
+      bad_name:       'Display name is too long (60 characters max)',
+      bad_email:      'Enter a valid email address',
+      weak_password:  'Password must be 6+ characters'
+    }[st];
+    if (problem) { err.style.color = 'var(--red)'; err.textContent = problem; return; }
+    if (st !== 'created' || !r.token || !r.player) { err.style.color = 'var(--red)'; err.textContent = 'Something went wrong — try again'; return; }
+
+    S.users[user] = Object.assign(rowToUser(r.player), { _token: r.token });
     S.friendCodes = S.friendCodes || {};
     S.friendCodes[user] = genCode(user);
     isGuest = false;
     S.currentUser = user;
     save();
-    savePlayer(getU());
-    btn.disabled = false; btn.textContent = 'Create Account 🎉';
     enterApp();
     toast("Account created! Welcome, " + name + "! 🎉");
   } catch(e) {
@@ -2154,6 +2102,12 @@ function doGuest() {
 
 function logout() {
   if (!confirm("Sign out?")) return;
+  // End this device's session in the database too (best effort).
+  const me = getU();
+  if (me && me._token && SB_CONFIGURED) {
+    sbRpc('hv_logout', { p_token: me._token }).catch(function(){});
+    delete me._token;
+  }
   S.currentUser = null;
   isGuest = false;
   save();
@@ -3605,13 +3559,19 @@ async function saveAddEmail(){
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ err.textContent = 'Enter a valid email address'; return; }
   if(Object.entries(S.users).some(([k,x]) => k !== S.currentUser && x.email && x.email.toLowerCase() === email)){ err.textContent = 'That email is already used'; return; }
   const btn = document.getElementById('addEmailBtn'); btn.disabled = true; btn.textContent = 'Saving...';
-  if(SB_CONFIGURED){
-    let dup;
-    try { dup = await loadPlayerByEmail(email); }
-    catch(e){ err.textContent = "Can't reach the server right now — try again in a minute."; btn.disabled = false; btn.textContent = 'Save email'; return; }
-    if(dup && dup.username !== S.currentUser){ err.textContent = 'That email is already registered'; btn.disabled = false; btn.textContent = 'Save email'; return; }
+  if(SB_CONFIGURED && !isGuest){
+    // One step in the database: check nobody else has this email, then save it.
+    const stop = function(msg){ err.textContent = msg; btn.disabled = false; btn.textContent = 'Save email'; };
+    if(!u._token) return stop('Sign in again first, then add your email.');
+    let r;
+    try { r = await sbRpc('hv_save', { p_token: u._token, p_data: { email: email } }); }
+    catch(e){ return stop("Can't reach the server right now — try again in a minute."); }
+    const st = r && r.status;
+    if(st === 'email_taken') return stop('That email is already registered');
+    if(st === 'signed_out')  return stop('Sign in again first, then add your email.');
+    if(st !== 'ok')          return stop('Something went wrong — try again');
   }
-  u.email = email; save(); if(!isGuest) savePlayer(u);
+  u.email = email; save();
   btn.disabled = false; btn.textContent = 'Save email';
   closeAddEmail(); maybeShowEmailBanner();
   toast('✅ Email added!');
@@ -3750,9 +3710,22 @@ document.addEventListener('keydown', e => {
 // Auto-login if session exists
 setTimeout(() => {
   try {
-    if (S.currentUser && S.users[S.currentUser]) {
-      isGuest = S.currentUser.startsWith('guest_');
-      activeLang = S.users[S.currentUser].lastLang || 'python';
+    const key = S.currentUser;
+    const me = key && S.users[key];
+    const guest = !!(key && key.startsWith('guest_'));
+    if (me && !guest && SB_CONFIGURED && !me._token) {
+      // Signed in from before the security update. That sign-in relied on the
+      // old password hash, which no longer works, so ask for the password once.
+      delete me._pass;
+      S.currentUser = null; save();
+      hideLoading();
+      showOnly('login');
+      const lu = document.getElementById('loginUser'); if (lu) lu.value = key;
+      const le = document.getElementById('loginError');
+      if (le) { le.style.color = 'var(--muted)'; le.textContent = '🔒 We made accounts safer — please sign in again.'; }
+    } else if (me) {
+      isGuest = guest;
+      activeLang = me.lastLang || 'python';
       enterApp();
     } else {
       hideLoading();
