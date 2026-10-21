@@ -1669,28 +1669,33 @@ async function sbRpc(name, args) {
   return await sbFetch('rpc/' + name, { method: 'POST', body: args || {} });
 }
 
-// The parts of a player the database lets the app save. Email is left out on
-// purpose: it changes only through saveAddEmail(), which checks it isn't taken.
+// The parts of a player the app still saves itself. XP, gems, streak,
+// lessons, crowns, boosts and Build rewards are worked out by the database
+// from what happened (see the fair play section below), so they're not here.
+// Email is left out on purpose too: it changes only through saveAddEmail(),
+// which checks it isn't taken.
 function cloudFields(u) {
-  return {
-    name: u.name, xp: u.xp || 0, streak: u.streak || 0,
-    progress: u.progress || {}, badges: u.badges || [], correct: u.correct || 0,
-    last_lang: u.lastLang || 'python', last_studied: u.lastStudiedDate || null,
-    gems: u.gems || 0, boost: u.boost || null, lang_xp: u.langXp || {},
-    crowns: u.crowns || {}
-  };
+  return { name: u.name, badges: u.badges || [], last_lang: u.lastLang || 'python' };
 }
 
 // ── Save current player to Supabase ──
 // Proves who is saving with the session token from sign-in, never a password.
+// First sends the lessons and Build passes waiting on this device (the
+// database works out what they earn), then the name, badges and language.
 async function savePlayer(u) {
   if (isGuest || !u || !SB_CONFIGURED) { save(); return; }
   save(); // always save locally first
   if (!u._token) { showSyncStatus('err', '⚠️ Sign in again to sync'); return; }
+  showSyncStatus('syncing', '☁️ Saving...');
+  const synced = await flushEvents(u);
+  if (!u._token) { showSyncStatus('err', '⚠️ Sign in again to sync'); return; }
   try {
-    showSyncStatus('syncing', '☁️ Saving...');
     const r = await sbRpc('hv_save', { p_token: u._token, p_data: cloudFields(u) });
-    if (r && r.status === 'ok') { showSyncStatus('ok', '✅ Saved!'); return; }
+    if (r && r.status === 'ok') {
+      if (synced) showSyncStatus('ok', '✅ Saved!');
+      else showSyncStatus('err', '📴 Saved on this device — will sync when online');
+      return;
+    }
     if (r && r.status === 'signed_out') {
       // The session was ended elsewhere, e.g. by a password reset.
       delete u._token; save();
@@ -1700,9 +1705,138 @@ async function savePlayer(u) {
     showSyncStatus('err', '⚠️ Saved locally only');
   } catch(e) {
     console.error('Supabase save failed:', e.message);
-    showSyncStatus('err', '⚠️ Saved locally only');
+    showSyncStatus('err', '📴 Saved on this device — will sync when online');
   }
 }
+
+// ══════════════════════════════════════════════════
+// FAIR PLAY — the database works out XP and gems
+// ══════════════════════════════════════════════════
+// The app doesn't tell the database "I have 900 XP" any more. It reports what
+// happened - a finished lesson, a passed Build challenge - and the database
+// pays the reward itself, using the same amounts the app shows. Until an
+// event reaches the database it waits in a queue on this device (u._pending),
+// so lessons finished offline still count once the connection is back, as
+// long as that's within a day. Every event has its own id, so sending one
+// twice (a retry, a dropped connection) can never pay twice.
+const PACE_GAP_MS = 10000;     // lessons at least 10 seconds apart...
+const PACE_PER_HOUR = 60;      // ...and at most 60 in any hour
+
+function newEventId() {
+  try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch(e) {}
+  const b = new Uint8Array(16);
+  try { crypto.getRandomValues(b); } catch(e) { for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256); }
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+  return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+}
+
+// Would the database refuse a lesson finished right now? Same rules as hv_sync,
+// checked here too so a lesson is never shown as done and then taken back.
+function lessonPaceProblem(u, now) {
+  const recent = (u._recent || []).filter(t => t > now - 3600000 && t <= now + 1000);
+  if (recent.some(t => now - t < PACE_GAP_MS)) return 'too_fast';
+  if (recent.length >= PACE_PER_HOUR) return 'hourly_limit';
+  return null;
+}
+
+// Adds an event to this account's queue. savePlayer() sends it.
+function queueEvent(u, ev) {
+  if (isGuest || !u || !SB_CONFIGURED) return;
+  const now = Date.now();
+  ev.id = newEventId();
+  ev.done_at = now;
+  ev.local_day = new Date(now).toDateString();
+  (u._pending = u._pending || []).push(ev);
+  if (ev.kind === 'lesson') u._recent = (u._recent || []).filter(t => t > now - 3600000).concat(now);
+  save();
+}
+
+// What to tell the player when the database didn't pay for something.
+const SYNC_NOTES = {
+  too_fast:     "⏳ A lesson was finished too soon after the one before, so it didn't count",
+  hourly_limit: "🛑 60 lessons an hour is the limit — a lesson didn't count",
+  too_old:      "📴 A lesson done offline over a day ago was too old to count",
+  locked:       "🔒 A Build challenge wasn't unlocked yet, so it didn't count"
+};
+function noteSyncResults(results) {
+  const seen = {};
+  for (const x of (results || [])) {
+    if (SYNC_NOTES[x.result] && !seen[x.result]) { seen[x.result] = 1; toast(SYNC_NOTES[x.result]); }
+  }
+}
+
+// The database's numbers replace this device's. Only done once nothing is
+// left in the queue, so lessons that haven't been sent yet never vanish.
+function applyCloudTotals(u, p) {
+  if (!u || !p) return;
+  const obj = v => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+  u.xp = p.xp || 0;
+  u.gems = p.gems || 0;
+  u.streak = p.streak || 0;
+  u.correct = p.correct || 0;
+  u.progress = obj(p.progress);
+  u.crowns = obj(p.crowns);
+  u.langXp = obj(p.lang_xp);
+  u.buildDone = obj(p.build_done);
+  u.lastStudiedDate = p.last_studied || null;
+  u.boost = p.boost || null;
+  // Badges, email and last language are the player's own: merge, don't replace.
+  u.badges = Array.from(new Set([].concat(u.badges || [], Array.isArray(p.badges) ? p.badges : [])));
+  if (!u.email && p.email) u.email = p.email;
+  if (!u.lastLang && p.last_lang) u.lastLang = p.last_lang;
+}
+
+// Sends the queue, 50 events at a time, and takes back the database's totals.
+// Resolves true when everything got through and false when it couldn't
+// (offline, signed out) - the queue then simply waits for next time.
+// Only one runs at a time; a call that comes in meanwhile makes it go round
+// once more, so nothing queued during a send is left behind.
+let _flushP = null, _flushAgain = false;
+function flushEvents(u) {
+  if (isGuest || !u || !SB_CONFIGURED || !u._token) return Promise.resolve(false);
+  if (_flushP) { _flushAgain = true; return _flushP; }
+  _flushP = (async () => {
+    let ok;
+    do { _flushAgain = false; ok = await flushOnce(u); } while (ok && _flushAgain);
+    return ok;
+  })().finally(() => { _flushP = null; });
+  return _flushP;
+}
+async function flushOnce(u) {
+  for (let round = 0; round < 40; round++) {
+    if (!u._token) return false;
+    const batch = (u._pending || []).slice(0, 50);
+    let r;
+    try {
+      r = await sbRpc('hv_sync', { p_token: u._token, p_events: batch,
+                                   p_now: Date.now(), p_today: new Date().toDateString() });
+    } catch (e) { return false; }                     // offline: try again later
+    if (!r || r.status !== 'ok') {
+      if (r && r.status === 'signed_out') { delete u._token; save(); }
+      return false;
+    }
+    const sent = new Set(batch.map(e => e.id));
+    u._pending = (u._pending || []).filter(e => !sent.has(e.id));
+    noteSyncResults(r.results);
+    if (!u._pending.length) {
+      applyCloudTotals(u, r.player);
+      save();
+      if (u === getU()) updateAllNav();
+      return true;
+    }
+    save();
+  }
+  return false;
+}
+
+// Back online, or back in the app: send anything that's waiting.
+function flushIfPending() {
+  const u = getU();
+  if (u && !isGuest && u._token && (u._pending || []).length) savePlayer(u);
+}
+window.addEventListener('online', flushIfPending);
+document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible') flushIfPending(); });
 
 // ── Is a username or email in use? ──
 // Throws when the server can't be reached, and says {exists:false} only when
@@ -1713,42 +1847,13 @@ async function lookupAccount(id) {
   if (!SB_CONFIGURED) return { exists: false };
   return (await sbRpc('hv_lookup', { p_id: id })) || { exists: false };
 }
+// Brings this device up to date: sends anything saved up here, then takes
+// the database's totals - lessons, XP, gems, streak, crowns, boosts and
+// Build - because those are the real ones now.
 async function syncMyAccount(){
   if (isGuest || !SB_CONFIGURED || !S.currentUser) return;
   const u = getU(); if (!u || !u._token) return;
-  let r; try { r = await sbRpc('hv_me', { p_token: u._token }); } catch(e){ return; }
-  if (!r || r.status !== 'ok' || !r.player) {
-    if (r && r.status === 'signed_out') { delete u._token; save(); }
-    return;
-  }
-  const cloud = r.player;
-  u.xp = Math.max(u.xp||0, cloud.xp||0);
-  u.gems = Math.max(u.gems||0, cloud.gems||0);
-  u.streak = Math.max(u.streak||0, cloud.streak||0);
-  u.correct = Math.max(u.correct||0, cloud.correct||0);
-  const lp = u.progress||{}, cp = cloud.progress||{}, mp = {};
-  for (const k of new Set([...Object.keys(lp), ...Object.keys(cp)])) {
-    mp[k] = Array.from(new Set([].concat((lp[k]||[]).map(String), (cp[k]||[]).map(String))));
-  }
-  u.progress = mp;
-  const lc = u.crowns||{}, cc = cloud.crowns||{}, mc = {};
-  for (const k of new Set([...Object.keys(lc), ...Object.keys(cc)])) {
-    mc[k] = {};
-    for (const id of new Set([...Object.keys(lc[k]||{}), ...Object.keys(cc[k]||{})])) {
-      mc[k][id] = Math.max((lc[k]&&lc[k][id])||0, (cc[k]&&cc[k][id])||0);
-    }
-  }
-  u.crowns = mc;
-  const lx = u.langXp||{}, cx = cloud.lang_xp||{}, mx = {};
-  for (const k of new Set([...Object.keys(lx), ...Object.keys(cx)])) mx[k] = Math.max(lx[k]||0, cx[k]||0);
-  u.langXp = mx;
-  u.badges = Array.from(new Set([].concat(u.badges||[], cloud.badges||[])));
-  if (!u.email && cloud.email) u.email = cloud.email;
-  if (cloud.last_lang && !u.lastLang) u.lastLang = cloud.last_lang;
-  if (cloud.last_studied && (!u.lastStudiedDate || new Date(cloud.last_studied) > new Date(u.lastStudiedDate))) u.lastStudiedDate = cloud.last_studied;
-  if (cloud.boost && !u.boost) u.boost = cloud.boost;
-  save();
-  savePlayer(u);
+  await savePlayer(u);
   updateAllNav();
 }
 
@@ -1786,12 +1891,15 @@ async function syncLeaderboard() {
           // an account - otherwise anyone who opened the leaderboard could
           // sign in as any player on it using any password at all.
           S.users[k] = { _stub: true, name: r.name, xp: r.xp || 0, streak: r.streak || 0, progress: r.progress || {}, badges: r.badges || [], correct: 0, langXp: r.lang_xp || {} };
-        } else {
-          // Update with fresher cloud data
-          S.users[k].xp = Math.max(S.users[k].xp || 0, r.xp || 0);
+        } else if (k !== S.currentUser) {
+          // Other accounts used on this device: the database's numbers are
+          // the real ones. Your own account syncs through syncMyAccount().
+          S.users[k].xp = r.xp || 0;
           S.users[k].streak = r.streak || 0;
           S.users[k].name = r.name;
-          if (r.lang_xp && k !== S.currentUser) S.users[k].langXp = r.lang_xp;
+          S.users[k].progress = r.progress || {};
+          S.users[k].badges = r.badges || [];
+          if (r.lang_xp) S.users[k].langXp = r.lang_xp;
         }
       }
       save();
@@ -1843,7 +1951,8 @@ function rowToUser(row) {
     correct: row.correct || 0, lastLang: row.last_lang || 'python',
     lastStudiedDate: row.last_studied || null,
     gems: row.gems || 0, boost: row.boost || null,
-    langXp: row.lang_xp || {}, crowns: row.crowns || {}
+    langXp: row.lang_xp || {}, crowns: row.crowns || {},
+    buildDone: row.build_done || {}
   };
 }
 
@@ -2100,13 +2209,16 @@ function doGuest() {
   toast("Guest mode — progress saves locally only 👤");
 }
 
-function logout() {
+async function logout() {
   if (!confirm("Sign out?")) return;
-  // End this device's session in the database too (best effort).
   const me = getU();
   if (me && me._token && SB_CONFIGURED) {
-    sbRpc('hv_logout', { p_token: me._token }).catch(function(){});
+    // Send any saved-up lessons first, then end this device's session in
+    // the database too (best effort).
+    if ((me._pending || []).length) { try { await flushEvents(me); } catch(e) {} }
+    const tok = me._token;
     delete me._token;
+    if (tok) sbRpc('hv_logout', { p_token: tok }).catch(function(){});
   }
   S.currentUser = null;
   isGuest = false;
@@ -2192,16 +2304,42 @@ function fmtDur(mins) {
   return h + ' hour' + (h > 1 ? 's' : '');
 }
 
-function buyBooster(id) {
+// Signed-in players buy from the database, which checks the price and the
+// balance and takes the gems itself. Guests buy on this device only.
+let _buying = false;
+async function buyBooster(id) {
   const u = getU();
   const item = BOOSTERS.find(b => b.id === id);
-  if (!item) return;
+  if (!item || _buying) return;
   if (getBoost(u)) { toast('⏳ A boost is already active — wait for it to finish!'); return; }
   if ((u.gems || 0) < item.cost) { toast('💎 Not enough gems — complete lessons to earn more!'); return; }
+  if (!isGuest && SB_CONFIGURED) {
+    if (!u._token) { toast('⚠️ Sign in again to buy boosters'); return; }
+    _buying = true;
+    try {
+      toast('💎 Buying ' + item.name + '…');
+      // Gems earned offline have to reach the database before they can be spent.
+      if (!(await flushEvents(u))) { toast('📴 You need to be online to buy a booster'); return; }
+      let r;
+      try { r = await sbRpc('hv_buy_booster', { p_token: u._token, p_id: id }); }
+      catch (e) { toast('📴 You need to be online to buy a booster'); return; }
+      const st = r && r.status;
+      if (r && r.player && !(u._pending || []).length) { applyCloudTotals(u, r.player); save(); }
+      if (st === 'ok') toast(item.icon + ' ' + item.name + ' activated — ' + item.mult + '× XP for ' + fmtDur(item.mins) + '!');
+      else if (st === 'not_enough_gems') toast('💎 Not enough gems — complete lessons to earn more!');
+      else if (st === 'boost_active') toast('⏳ A boost is already active — wait for it to finish!');
+      else if (st === 'signed_out') { delete u._token; save(); toast('⚠️ Sign in again to buy boosters'); }
+      else toast('Something went wrong — try again');
+    } finally {
+      _buying = false;
+      renderShop();
+      updateAllNav();
+    }
+    return;
+  }
   u.gems -= item.cost;
   u.boost = { mult: item.mult, expiresAt: Date.now() + item.mins * 60000 };
   save();
-  if (!isGuest) savePlayer(u);
   toast(item.icon + ' ' + item.name + ' activated — ' + item.mult + '× XP for ' + fmtDur(item.mins) + '!');
   renderShop();
   updateAllNav();
@@ -2725,7 +2863,7 @@ function bhCheck(out, r, want, doneKey, xp, gems){
   var pass = bhNorm(got)===bhNorm(want);
   if(pass){
     var u=bhUser(); var first = u && !u.buildDone[doneKey];
-    if(first){ var m=getMult(u); var g=xp*m; u.buildDone[doneKey]=1; u.xp=(u.xp||0)+g; u.gems=(u.gems||0)+gems; if(activeLang){ ensureLangXp(u); u.langXp[activeLang]=(u.langXp[activeLang]||0)+g; } save(); if(!isGuest) savePlayer(u); updateAllNav(); }
+    if(first){ var m=getMult(u); var g=xp*m; u.buildDone[doneKey]=1; u.xp=(u.xp||0)+g; u.gems=(u.gems||0)+gems; if(activeLang){ ensureLangXp(u); u.langXp[activeLang]=(u.langXp[activeLang]||0)+g; } if(!isGuest) queueEvent(u, {kind:'build', lang:activeLang, item:doneKey}); save(); if(!isGuest) savePlayer(u); updateAllNav(); }
     out.style.color='#8ef0a8';
     out.textContent='Your output:\n'+(got.replace(/\n+$/,'')||'(nothing)')+'\n\n🎉 Correct!'+(first?'  +'+(xp*getMult(u))+' XP · +'+gems+' 💎'+(getMult(u)>1?' (boost!)':''):'  (already earned)');
     return true;
@@ -3315,11 +3453,10 @@ function handle(ok, okMsg, badMsg) {
   const u = getU();
   if (ok) {
     session.correct++;
-    ensureLangXp(u);
+    // Answer XP is added when the lesson is finished, together with the
+    // lesson's own reward - that's when the database hears about it too.
     const qXp = 20 * getMult(u);
-    u.xp += qXp; u.correct = (u.correct||0)+1;
-    if(activeLang) u.langXp[activeLang] = (u.langXp[activeLang]||0) + qXp;
-    save(); updateAllNav();
+    session.answerXp = (session.answerXp || 0) + qXp;
     xpPop('+' + qXp + ' XP ⭐');
     showFB(true, '🎉 Correct!', okMsg);
   } else {
@@ -3352,37 +3489,52 @@ function finishLesson() {
   const doneStrs = u.progress[activeLang].map(String);
   const mult = getMult(u);
   let gainedXP = 0, gainedGems = 0;
-  if (session.isExtra) {
-    gainedXP = 25 * mult; // extra practice always gives a little XP
-    gainedGems = 1;
-  } else if (!doneStrs.includes(lid)) {
-    u.progress[activeLang].push(lid);
-    gainedXP = 50 * mult;
-    gainedGems = 3 + (isPerfect ? 2 : 0);
-    u.crowns = u.crowns || {}; u.crowns[activeLang] = u.crowns[activeLang] || {};
-    u.crowns[activeLang][lid] = 1;
+  // Signed-in players follow the database's speed limit (see lessonPaceProblem).
+  const paceProblem = (!isGuest && SB_CONFIGURED) ? lessonPaceProblem(u, Date.now()) : null;
+  session.paceProblem = paceProblem;
+  if (paceProblem) {
+    session.answerXp = 0;
+    toast(paceProblem === 'too_fast'
+      ? '⏳ Whoa, speedy! Lessons need 10 seconds between them to count'
+      : "🛑 That's 60 lessons this hour — take a break! This one didn't count");
   } else {
-    u.crowns = u.crowns || {}; u.crowns[activeLang] = u.crowns[activeLang] || {};
-    const _cur = Math.max(1, u.crowns[activeLang][lid] || 1);
-    if (_cur < MAX_CROWNS) { u.crowns[activeLang][lid] = _cur + 1; gainedXP = 30 * mult; gainedGems = 2; session.crownEarned = _cur + 1; }
-    else { gainedXP = 15 * mult; gainedGems = 1; }
+    if (session.isExtra) {
+      gainedXP = 25 * mult; // extra practice always gives a little XP
+      gainedGems = 1;
+    } else if (!doneStrs.includes(lid)) {
+      u.progress[activeLang].push(lid);
+      gainedXP = 50 * mult;
+      gainedGems = 3 + (isPerfect ? 2 : 0);
+      u.crowns = u.crowns || {}; u.crowns[activeLang] = u.crowns[activeLang] || {};
+      u.crowns[activeLang][lid] = 1;
+    } else {
+      u.crowns = u.crowns || {}; u.crowns[activeLang] = u.crowns[activeLang] || {};
+      const _cur = Math.max(1, u.crowns[activeLang][lid] || 1);
+      if (_cur < MAX_CROWNS) { u.crowns[activeLang][lid] = _cur + 1; gainedXP = 30 * mult; gainedGems = 2; session.crownEarned = _cur + 1; }
+      else { gainedXP = 15 * mult; gainedGems = 1; }
+    }
+    ensureLangXp(u);
+    const answerXp = session.answerXp || 0;
+    u.xp = (u.xp || 0) + answerXp + gainedXP;
+    u.correct = (u.correct || 0) + session.correct;
+    session.finishXP = gainedXP;
+    if (activeLang && (answerXp + gainedXP)) u.langXp[activeLang] = (u.langXp[activeLang]||0) + answerXp + gainedXP;
+    u.gems = (u.gems || 0) + gainedGems;
+    if (gainedXP > 0) {
+      toast('+' + (answerXp + gainedXP) + ' XP · +' + gainedGems + ' 💎' + (mult > 1 ? ' (' + mult + '× boost!)' : ''));
+    }
+    const today = new Date().toDateString();
+    const last = u.lastStudiedDate;
+    if (last !== today) {
+      const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+      u.streak = (last === yesterday.toDateString()) ? (u.streak||0)+1 : 1;
+      u.lastStudiedDate = today;
+    }
+    checkBadges(u, lid, isPerfect);
+    // Tell the database what happened; it works out the same reward itself.
+    if (!isGuest) queueEvent(u, { kind: 'lesson', lang: activeLang, item: session.isExtra ? 'extra' : lid,
+                                  correct: session.correct, total: session.total, extra: !!session.isExtra });
   }
-  ensureLangXp(u);
-  u.xp += gainedXP;
-  session.finishXP = gainedXP;
-  if(activeLang && gainedXP) u.langXp[activeLang] = (u.langXp[activeLang]||0) + gainedXP;
-  u.gems = (u.gems || 0) + gainedGems;
-  if (gainedXP > 0) {
-    toast('+' + gainedXP + ' XP · +' + gainedGems + ' 💎' + (mult > 1 ? ' (' + mult + '× boost!)' : ''));
-  }
-  const today = new Date().toDateString();
-  const last = u.lastStudiedDate;
-  if (last !== today) {
-    const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
-    u.streak = (last === yesterday.toDateString()) ? (u.streak||0)+1 : 1;
-    u.lastStudiedDate = today;
-  }
-  checkBadges(u, lid, isPerfect);
   save();
   if (!isGuest) savePlayer(u);
   hideFB();
@@ -3403,11 +3555,11 @@ function finishLesson() {
 
   document.getElementById('lessonBody').innerHTML = `
     <div class="complete-wrap">
-      <div class="complete-icon">${session.crownEarned?'👑':(isPerfect?'🏆':'🎉')}</div>
-      <div class="complete-title">${session.crownEarned?('👑 Crown '+session.crownEarned+' earned!'):(isPerfect?'Flawless!':'Lesson Complete!')}</div>
+      <div class="complete-icon">${session.paceProblem?'⏳':(session.crownEarned?'👑':(isPerfect?'🏆':'🎉'))}</div>
+      <div class="complete-title">${session.paceProblem?(session.paceProblem==='too_fast'?'Too fast to count!':'Time for a break!'):(session.crownEarned?('👑 Crown '+session.crownEarned+' earned!'):(isPerfect?'Flawless!':'Lesson Complete!'))}</div>
       <div class="complete-sub">${lang.icon} ${lang.name} · ${lesson?.title || 'Lesson'}<br>${isPerfect?'💎 Perfect score — every challenge nailed!':'You got <strong>'+session.correct+' of '+session.total+'</strong> correct.'}</div>
       <div class="complete-stats">
-        <div class="cs"><div class="csn" style="color:#a78bfa">+${session.correct*20+(session.finishXP||0)}</div><div class="csl">XP</div></div>
+        <div class="cs"><div class="csn" style="color:#a78bfa">+${(session.answerXp||0)+(session.finishXP||0)}</div><div class="csl">XP</div></div>
         <div class="cs"><div class="csn" style="color:#f59e0b">${u.streak}🔥</div><div class="csl">Streak</div></div>
         <div class="cs"><div class="csn" style="color:#34d399">${acc}%</div><div class="csl">Accuracy</div></div>
       </div>
