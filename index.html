@@ -1675,7 +1675,7 @@ async function sbRpc(name, args) {
 // Email is left out on purpose too: it changes only through saveAddEmail(),
 // which checks it isn't taken.
 function cloudFields(u) {
-  return { name: u.name, badges: u.badges || [], last_lang: u.lastLang || 'python' };
+  return { name: u.name, last_lang: u.lastLang || 'python' };
 }
 
 // ── Save current player to Supabase ──
@@ -1782,7 +1782,8 @@ function applyCloudTotals(u, p) {
   u.lastStudiedDate = p.last_studied || null;
   u.boost = p.boost || null;
   // Badges, email and last language are the player's own: merge, don't replace.
-  u.badges = Array.from(new Set([].concat(u.badges || [], Array.isArray(p.badges) ? p.badges : [])));
+  // Badges are the database's now — take its list as the truth (drops any faked locally).
+  u.badges = Array.isArray(p.badges) ? p.badges : (u.badges || []);
   if (!u.email && p.email) u.email = p.email;
   if (!u.lastLang && p.last_lang) u.lastLang = p.last_lang;
 }
