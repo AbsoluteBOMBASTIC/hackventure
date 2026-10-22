@@ -2830,7 +2830,7 @@ function bhHtmlPlayground(){
   return '<div style="background:var(--card,#16161f);border:1px solid var(--border,#2a2a35);border-radius:16px;padding:14px">'
     + '<div style="font-size:0.8rem;color:var(--muted,#8888a0);margin-bottom:8px">Write HTML, hit Preview, and see your page appear below. 🌐</div>'
     + bhEditor('bhHtml', '<h1>Hello!</h1>\n<p>I am building a <b>web page</b>.</p>') + bhRunBtn('bhRunHtml()','👁️ Preview')
-    + '<iframe id="bhHtmlOut" style="width:100%;height:220px;margin-top:10px;background:#fff;border:1px solid var(--border,#2a2a35);border-radius:12px"></iframe></div>';
+    + '<iframe id="bhHtmlOut" sandbox="allow-scripts" style="width:100%;height:220px;margin-top:10px;background:#fff;border:1px solid var(--border,#2a2a35);border-radius:12px"></iframe></div>';
 }
 function bhRunHtml(){ document.getElementById('bhHtmlOut').srcdoc = document.getElementById('bhHtml').value; }
 
@@ -3653,9 +3653,9 @@ function renderLeader() {
       return `<div class="pod" data-k="${esc(u._key)}" onclick="openUserProfile(this.dataset.k)" style="cursor:pointer">
         <div class="pod-av" style="background:${COLORS[realIdx%COLORS.length]};width:${i===1?80:i===0?70:60}px;height:${i===1?80:i===0?70:60}px">
           ${i===1?'<div class="pod-crown">👑</div>':''}
-          ${u.name[0].toUpperCase()}${isMeP?'<div class="node-check" style="bottom:-4px">★</div>':''}
+          ${esc(u.name[0].toUpperCase())}${isMeP?'<div class="node-check" style="bottom:-4px">★</div>':''}
         </div>
-        <div class="pod-name">${u.name}${isMeP?' (you)':''}</div>
+        <div class="pod-name">${esc(u.name)}${isMeP?' (you)':''}</div>
         <div class="pod-xp">${(u.xp||0).toLocaleString()} XP</div>
         <div class="pod-base">${medals[i===1?0:i===0?1:2]}</div>
       </div>`;
@@ -3675,9 +3675,9 @@ function renderLeader() {
       const isMeL = u._key === me;
       return `<div class="leader-row ${isMeL?'me':''}" data-k="${esc(u._key)}" onclick="openUserProfile(this.dataset.k)" style="cursor:pointer">
         <div class="rank-badge">${i+4}</div>
-        <div class="ldr-av" style="background:${COLORS[(i+3)%COLORS.length]}">${u.name[0].toUpperCase()}</div>
+        <div class="ldr-av" style="background:${COLORS[(i+3)%COLORS.length]}">${esc(u.name[0].toUpperCase())}</div>
         <div class="ldr-info">
-          <div class="ldr-name">${u.name}${isMeL?' (you)':''}</div>
+          <div class="ldr-name">${esc(u.name)}${isMeL?' (you)':''}</div>
           <div class="ldr-sub">${Object.values(u.progress||{}).reduce((a,b)=>a+b.length,0)} lessons · ${u.streak||0}🔥</div>
         </div>
         <div class="ldr-xp">${(u.xp||0).toLocaleString()} XP</div>
@@ -3766,7 +3766,7 @@ function closeUserProfile(){ var m=document.getElementById('profModal'); if(m) m
 function renderProfile() {
   updateAllNav();
   const u = getU(); if(!u) return;
-  document.getElementById('profileAv').innerHTML = u.name[0].toUpperCase() + '<div class="p-av-ring"></div>';
+  document.getElementById('profileAv').innerHTML = esc(u.name[0].toUpperCase()) + '<div class="p-av-ring"></div>';
   document.getElementById('profileUname').textContent = u.name;
   const lvl = Math.floor((u.xp||0)/100)+1;
   const titles = ['Beginner','Apprentice','Coder','Developer','Polyglot','Guru','Master'];
