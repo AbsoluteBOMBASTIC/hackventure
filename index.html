@@ -499,9 +499,9 @@ input{font-family:inherit;outline:none;border:none}
       <!-- Reset Password form -->
       <div id="formReset" style="display:none">
         <div style="font-size:0.85rem;color:var(--muted);margin-bottom:14px;text-align:center">Resetting password for <strong id="resetUserLabel" style="color:var(--text)"></strong></div>
-        <div class="input-group">
-          <div class="input-label">Email On The Account</div>
-          <input class="text-input" id="resetEmail" type="email" placeholder="you@example.com" autocomplete="email" autocapitalize="none">
+                <div class="input-group">
+          <div class="input-label">6-Digit Code From Your Email</div>
+          <input class="text-input" id="resetCode" type="text" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code">
         </div>
         <div class="input-group">
           <div class="input-label">New Password</div>
@@ -513,6 +513,7 @@ input{font-family:inherit;outline:none;border:none}
         </div>
         <div class="auth-status" id="resetError"></div>
         <button class="primary-btn" id="resetBtn" onclick="doReset()">Reset Password</button>
+                <div style="text-align:center;margin-top:10px"><span style="font-size:0.78rem;color:var(--muted);cursor:pointer;text-decoration:underline" onclick="resendResetCode()">Send me a new code</span></div>
         <div style="text-align:center;margin-top:10px"><span style="font-size:0.78rem;color:var(--muted);cursor:pointer;text-decoration:underline" onclick="cancelReset()">← Back to Sign In</span></div>
       </div>
 
@@ -1972,6 +1973,18 @@ async function findAccount(idRaw) {
 // The account currently being reset (set by showResetForm, read by doReset).
 let _resetTarget = null;
 
+async function sendResetCode(id) {
+  try {
+    const res = await fetch(SUPABASE_URL + '/functions/v1/hv-send-reset-code', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id })
+    });
+    const j = await res.json();
+    return (j && j.status) || 'error';
+  } catch (e) { return 'error'; }
+}
+
 async function showResetForm() {
   const err = document.getElementById('loginError');
   const raw = document.getElementById('loginUser').value.trim();
@@ -1989,13 +2002,24 @@ async function showResetForm() {
   if (!target) { err.textContent = 'No account with that username or email — check the spelling and your connection'; return; }
   if (!target.hasEmail) { err.textContent = "This account has no email saved, so its password can't be reset here"; return; }
 
+  err.style.color = 'var(--muted)';
+  err.textContent = 'Sending your code...';
+  const sent = await sendResetCode(target.id);
+  err.style.color = 'var(--red)';
+  if (sent === 'limit') { err.textContent = 'Too many codes requested — try again in an hour'; return; }
+  if (sent !== 'sent' && sent !== 'wait') { err.textContent = "Couldn't send the email — try again in a minute"; return; }
+
   _resetTarget = target;
   err.textContent = '';
   document.getElementById('resetUserLabel').textContent = target.label;
-  document.getElementById('resetEmail').value = '';
+  document.getElementById('resetCode').value = '';
   document.getElementById('resetPass1').value = '';
   document.getElementById('resetPass2').value = '';
-  document.getElementById('resetError').textContent = '';
+  const re = document.getElementById('resetError');
+  re.style.color = 'var(--green)';
+  re.textContent = sent === 'sent'
+    ? '📧 We emailed you a 6-digit code. It lasts 10 minutes.'
+    : '📧 A code was just sent — check your inbox.';
   document.getElementById('formLogin').style.display = 'none';
   document.getElementById('formSignup').style.display = 'none';
   document.getElementById('formReset').style.display = '';
@@ -2005,9 +2029,22 @@ async function showResetForm() {
   document.getElementById('tabSignup').style.visibility = 'hidden';
 }
 
+async function resendResetCode() {
+  const err = document.getElementById('resetError');
+  if (!_resetTarget) return;
+  err.style.color = 'var(--muted)';
+  err.textContent = 'Sending a new code...';
+  const sent = await sendResetCode(_resetTarget.id);
+  err.style.color = 'var(--red)';
+  if (sent === 'sent') { err.style.color = 'var(--green)'; err.textContent = '📧 New code sent — check your inbox.'; return; }
+  if (sent === 'wait') { err.textContent = 'Wait a minute before asking for another code'; return; }
+  if (sent === 'limit') { err.textContent = 'Too many codes requested — try again in an hour'; return; }
+  err.textContent = "Couldn't send the email — try again in a minute";
+}
+
 function cancelReset() {
   _resetTarget = null;
-  const e1 = document.getElementById('resetEmail'); if (e1) e1.value = '';
+  const e1 = document.getElementById('resetCode'); if (e1) e1.value = '';
   const p1 = document.getElementById('resetPass1'); if (p1) p1.value = '';
   const p2 = document.getElementById('resetPass2'); if (p2) p2.value = '';
   const re = document.getElementById('resetError'); if (re) re.textContent = '';
@@ -2027,29 +2064,26 @@ async function doReset() {
   const target = _resetTarget;
   if (!target) { err.textContent = 'Start again from "Forgot password?"'; return; }
 
-  const email = document.getElementById('resetEmail').value.trim().toLowerCase();
-  // Trimmed, because sign-in trims the password too. A reset password with a
-  // stray space at the end could never be used to sign in before.
+  const code = document.getElementById('resetCode').value.trim();
+  // Trimmed, because sign-in trims the password too.
   const p1 = document.getElementById('resetPass1').value.trim();
   const p2 = document.getElementById('resetPass2').value.trim();
 
-  if (!email) { err.textContent = 'Enter the email this account was signed up with'; return; }
+  if (!/^[0-9]{6}$/.test(code)) { err.textContent = 'Enter the 6-digit code from your email'; return; }
   if (p1.length < 6) { err.textContent = 'Password must be 6+ characters'; return; }
   if (p1 !== p2) { err.textContent = "Passwords don't match — try again"; return; }
 
-  // The database checks the email and changes the password in one step, so
-  // the email on the account never has to leave the server.
+  // The database checks the code and changes the password in one step.
   btn.disabled = true; btn.textContent = 'Saving...';
   let r = null;
-  try { r = await sbRpc('hv_reset', { p_id: target.id, p_email: email, p_new_password: p1 }); }
+  try { r = await sbRpc('hv_reset_with_code', { p_id: target.id, p_code: code, p_new_password: p1 }); }
   catch (e) { r = null; }
   btn.disabled = false; btn.textContent = 'Reset Password';
 
   const st = r && r.status;
   if (!r)                       { err.textContent = 'Could not reach the server — check your connection and try again'; return; }
-  if (st === 'wrong_email')     { err.textContent = "That email doesn't match this account"; return; }
-  if (st === 'no_email')        { err.textContent = "This account has no email saved, so its password can't be reset here"; return; }
-  if (st === 'locked')          { err.textContent = 'Too many wrong tries — wait 5 minutes and try again'; return; }
+  if (st === 'wrong_code')      { err.textContent = 'Wrong code — ' + r.attempts_left + ' ' + (r.attempts_left === 1 ? 'try' : 'tries') + ' left'; return; }
+  if (st === 'expired')         { err.textContent = 'That code has expired — tap "Send me a new code"'; return; }
   if (st === 'no_account')      { err.textContent = 'No account with that username or email'; return; }
   if (st === 'weak_password')   { err.textContent = 'Password must be 6+ characters'; return; }
   if (st !== 'ok')              { err.textContent = 'Something went wrong — try again'; return; }
@@ -2060,8 +2094,6 @@ async function doReset() {
 
   cancelReset();
   document.getElementById('loginUser').value = r.username;
-  const le2 = document.getElementById('loginEmail');
-  if (le2) le2.value = email;
   document.getElementById('loginPass').value = '';
   const le = document.getElementById('loginError');
   le.style.color = 'var(--green)';
